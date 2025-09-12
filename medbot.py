@@ -41,7 +41,7 @@ def call_openrouter(user_text):
     )
 
     payload = {
-        "model": "mistralai/mistral-7b-instruct:free",
+        "model": "deepseek-ai/deepseek-chat",
         "temperature": 0.7,
         "messages": [
             {"role": "system", "content": system_prompt},
