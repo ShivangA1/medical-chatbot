@@ -4,6 +4,7 @@ import requests
 import logging
 import re
 from flask import Flask, request, Response
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -17,25 +18,34 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 if not OPENROUTER_API_KEY or not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
     raise ValueError("Missing one or more required environment variables.")
 
+# 🧠 SQLite setup
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sessions.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+class UserSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(20), unique=True, nullable=False)
+    history = db.Column(db.Text)  # JSON string of messages
+
+with app.app_context():
+    db.create_all()
+
+# 💬 Predefined responses
 DISCLAIMER = (
     "Note: This assistant provides general health information only and is not a substitute "
     "for professional medical advice. If you think you may be experiencing a medical emergency, seek immediate care."
 )
 
-# 💬 Predefined responses
 PREDEFINED_RESPONSES = {
     "hi": "👋 Hello! I'm your health assistant. How can I support you today?",
     "hello": "Hi there! 😊 Feel free to ask about wellness, safety, or self-care.",
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
-    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Send 'reset' anytime to clear memory and start fresh!"
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Send 'reset' to clear memory or 'summary' to get a recap."
 }
 
-# 🧠 Session-based memory store
-user_sessions = {}  # {phone_number: [{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]}
-
-# 🔍 Regex matcher for flexible input
 def match_predefined(text):
     text = text.lower().strip()
     if re.search(r"\b(hi|hello|hey)\b", text):
@@ -50,23 +60,32 @@ def match_predefined(text):
         return PREDEFINED_RESPONSES["help"]
     return None
 
+# 🧠 SQLite memory functions
+def load_session(phone_number):
+    session = UserSession.query.filter_by(phone_number=phone_number).first()
+    if session:
+        return json.loads(session.history)
+    return []
+
+def save_session(phone_number, messages):
+    session = UserSession.query.filter_by(phone_number=phone_number).first()
+    if session:
+        session.history = json.dumps(messages)
+    else:
+        session = UserSession(phone_number=phone_number, history=json.dumps(messages))
+        db.session.add(session)
+    db.session.commit()
+
+def clear_session(phone_number):
+    session = UserSession.query.filter_by(phone_number=phone_number).first()
+    if session:
+        db.session.delete(session)
+        db.session.commit()
+
 # 🧠 OpenRouter API call
 def call_openrouter(user_text, phone_number):
-    if not user_text or not isinstance(user_text, str):
-        return "Sorry, I couldn't understand your message. Please try again."
-
-    # Initialize session if not present
-    if phone_number not in user_sessions:
-        user_sessions[phone_number] = []
-
-    # Append user message to session
-    user_sessions[phone_number].append({"role": "user", "content": user_text})
-
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    messages = load_session(phone_number)
+    messages.append({"role": "user", "content": user_text})
 
     system_prompt = (
         "You are a cautious, empathetic health assistant designed to support general wellness. "
@@ -84,27 +103,28 @@ def call_openrouter(user_text, phone_number):
         "- Indian Council of Medical Research: https://www.icmr.gov.in"
     )
 
-    # Build message history
-    messages = [{"role": "system", "content": system_prompt}] + user_sessions[phone_number]
-
     payload = {
         "model": "deepseek/deepseek-chat-v3.1:free",
         "temperature": 0.7,
-        "messages": messages
+        "messages": [{"role": "system", "content": system_prompt}] + messages
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions",
+                             headers={
+                                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                                 "Content-Type": "application/json"
+                             },
+                             json=payload, timeout=30)
         resp.raise_for_status()
-        data = resp.json()
-        bot_reply = data["choices"][0]["message"]["content"].strip()
-
-        # Append bot reply to session
-        user_sessions[phone_number].append({"role": "assistant", "content": bot_reply})
+        bot_reply = resp.json()["choices"][0]["message"]["content"].strip()
+        messages.append({"role": "assistant", "content": bot_reply})
+        save_session(phone_number, messages)
         return bot_reply
     except Exception as e:
         logging.error(f"❌ OpenRouter failed with: {e}")
         return "⚠️ I'm currently unable to respond. Please try again later.\n\n" + DISCLAIMER
+
 # 📤 Send WhatsApp message
 def send_whatsapp_message(to_number, message_text):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
@@ -116,9 +136,7 @@ def send_whatsapp_message(to_number, message_text):
         "messaging_product": "whatsapp",
         "to": to_number,
         "type": "text",
-        "text": {
-            "body": message_text
-        }
+        "text": {"body": message_text}
     }
     try:
         requests.post(url, headers=headers, json=payload)
@@ -131,7 +149,6 @@ def verify_webhook():
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
-
     if mode == "subscribe" and token == VERIFY_TOKEN:
         return Response(challenge, status=200)
     return Response("Verification failed", status=403)
@@ -149,7 +166,7 @@ def webhook():
                     messages = value["messages"]
                     contacts = value.get("contacts", [])
                     phone_number = contacts[0]["wa_id"] if contacts else None
-                    contact_name = contacts[0]["profile"]["name"] if contacts else "Unknown"
+                    contact_name = contacts[0].get("profile", {}).get("name", "Unknown") if contacts else "Unknown"
 
                     for message in messages:
                         message_text = message.get("text", {}).get("body", "")
@@ -157,16 +174,16 @@ def webhook():
                             logging.info(f"👤 Name: {contact_name}")
                             logging.info(f"📱 Phone: {phone_number}")
                             logging.info(f"💬 Message: {message_text}")
-                                                        # 🧹 Clear memory
+
+                            # 🧹 Clear memory
                             if message_text.lower().strip() == "reset":
-                                user_sessions.pop(phone_number, None)
-                                reply = "🧹 Memory cleared. Let's start fresh!"
-                                send_whatsapp_message(phone_number, reply)
+                                clear_session(phone_number)
+                                send_whatsapp_message(phone_number, "🧹 Memory cleared. Let's start fresh!")
                                 continue
 
                             # 🧪 Debug memory
                             elif message_text.lower().strip() == "debug":
-                                history = user_sessions.get(phone_number, [])
+                                history = load_session(phone_number)
                                 if not history:
                                     reply = "🧪 No memory found for this session."
                                 else:
@@ -177,13 +194,11 @@ def webhook():
 
                             # 🧠 Summarize memory
                             elif message_text.lower().strip() == "summary":
-                                history = user_sessions.get(phone_number, [])
+                                history = load_session(phone_number)
                                 if not history:
                                     reply = "🧠 No memory to summarize yet."
                                 else:
-                                    summary_prompt = [
-                                        {"role": "system", "content": "Summarize the following conversation in 2-3 lines for context retention."}
-                                    ] + history
+                                    summary_prompt = [{"role": "system", "content": "Summarize the following conversation in 2-3 lines for context retention."}] + history
                                     payload = {
                                         "model": "deepseek/deepseek-chat-v3.1:free",
                                         "temperature": 0.5,
@@ -191,11 +206,11 @@ def webhook():
                                     }
                                     try:
                                         resp = requests.post("https://openrouter.ai/api/v1/chat/completions",
-                                                            headers={
-                                                                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                                                                "Content-Type": "application/json"
-                                                            },
-                                                            json=payload, timeout=30)
+                                                             headers={
+                                                                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                                                                 "Content-Type": "application/json"
+                                                             },
+                                                             json=payload, timeout=30)
                                         resp.raise_for_status()
                                         summary = resp.json()["choices"][0]["message"]["content"].strip()
                                         reply = f"🧠 Summary:\n{summary}"
@@ -214,11 +229,9 @@ def webhook():
 
     return Response("EVENT_RECEIVED", status=200)
 
-# 🏥 Health check route
 @app.route('/')
 def home():
     return "✅ Medical Chatbot is running!"
 
-# 🚀 Start the Flask app
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
