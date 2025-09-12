@@ -53,9 +53,10 @@ def call_openrouter(user_text):
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
+        logging.info(f"🧠 OpenRouter response: {data}")
         return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        logging.error(f"OpenRouter error: {e}")
+        logging.error(f"❌ OpenRouter failed with: {e}")
         return "⚠️ I'm currently unable to respond. Please try again later.\n\n" + DISCLAIMER
 
 # 📤 Send WhatsApp message
