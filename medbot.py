@@ -13,18 +13,17 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "Shivang")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+MAPMYINDIA_API_KEY = "kqkihoffqsittbvhvodrptxujmpvwbjeqdpd"  # Static key
 
 if not OPENROUTER_API_KEY or not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
     raise ValueError("Missing one or more required environment variables.")
-
-MAPMYINDIA_API_KEY = "kqkihoffqsittbvhvodrptxujmpvwbjeqdpd"  # Static key
 
 DISCLAIMER = (
     "Note: This assistant provides general health information only and is not a substitute "
     "for professional medical advice. If you think you may be experiencing a medical emergency, seek immediate care."
 )
 
-# 💬 Predefined responses (English + Hindi + Bengali)
+# 💬 Predefined responses
 PREDEFINED_RESPONSES = {
     "hi": "👋 Hello! I'm your health assistant. How can I support you today?",
     "hello": "Hi there! 😊 Feel free to ask about wellness, safety, or self-care.",
@@ -51,6 +50,22 @@ def match_predefined(text):
     elif re.search(r"\b(help|support|मदद|সাহায্য)\b", text):
         return PREDEFINED_RESPONSES["help"]
     return None
+
+# 📍 Geocode location name to coordinates
+def get_coordinates_from_location(location_text):
+    url = f"https://apis.mappls.com/advancedmaps/v1/{MAPMYINDIA_API_KEY}/geoCode"
+    params = {"address": location_text}
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        result = data.get("copResults", [])[0]
+        lat = float(result["latitude"])
+        lon = float(result["longitude"])
+        return lat, lon
+    except Exception as e:
+        logging.error(f"Geocoding failed: {e}")
+        return None, None
 
 # 🏥 Hospital search via MapMyIndia
 def get_nearby_hospitals(lat=22.215, lon=83.396):
@@ -174,14 +189,24 @@ def webhook():
 
                             # 🏥 Check for hospital-related query
                             if re.search(r"\b(hospital|clinic|emergency|doctor)\b", message_text.lower()):
-                                reply = get_nearby_hospitals()
+                                # Try to extract location from message
+                                match = re.search(r"\b(?:near|in)\s+([a-zA-Z\s]+)", message_text.lower())
+                                location = match.group(1).strip() if match else None
+
+                                if location:
+                                    lat, lon = get_coordinates_from_location(location)
+                                    if lat and lon:
+                                        reply = get_nearby_hospitals(lat, lon)
+                                    else:
+                                        reply = "⚠️ I couldn't find that location. Please try again with a city or area name."
+                                else:
+                                    reply = get_nearby_hospitals()  # fallback to Raigarh
                             else:
                                 reply = match_predefined(message_text) or call_openrouter(message_text)
 
                             send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
-
 # 🏥 Health check route
 @app.route('/')
 def home():
