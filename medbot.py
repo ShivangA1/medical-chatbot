@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import logging
+import re
 from flask import Flask, request, Response
 
 app = Flask(__name__)
@@ -21,6 +22,31 @@ DISCLAIMER = (
     "for professional medical advice. If you think you may be experiencing a medical emergency, seek immediate care."
 )
 
+# 💬 Predefined responses
+PREDEFINED_RESPONSES = {
+    "hi": "👋 Hello! I'm your health assistant. How can I support you today?",
+    "hello": "Hi there! 😊 Feel free to ask about wellness, safety, or self-care.",
+    "thanks": "You're welcome! 🙏 Stay safe and take care.",
+    "bye": "Goodbye! 👋 Wishing you good health and happiness.",
+    "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. I'm here to support you!"
+}
+
+# 🔍 Regex matcher for flexible input
+def match_predefined(text):
+    text = text.lower().strip()
+    if re.search(r"\b(hi|hello|hey)\b", text):
+        return PREDEFINED_RESPONSES["hi"]
+    elif re.search(r"\b(thanks|thank you)\b", text):
+        return PREDEFINED_RESPONSES["thanks"]
+    elif re.search(r"\b(bye|goodbye)\b", text):
+        return PREDEFINED_RESPONSES["bye"]
+    elif re.search(r"\b(who are you|your name)\b", text):
+        return PREDEFINED_RESPONSES["who are you"]
+    elif re.search(r"\b(help|support)\b", text):
+        return PREDEFINED_RESPONSES["help"]
+    return None
+
 # 🧠 OpenRouter API call
 def call_openrouter(user_text):
     if not user_text or not isinstance(user_text, str):
@@ -33,19 +59,19 @@ def call_openrouter(user_text):
     }
 
     system_prompt = (
-    "You are a cautious, empathetic health assistant designed to support general wellness. "
-    "You are a multilingual health assistant. Always reply in the user's language. Be empathetic, clear, and culturally sensitive."
-    "Provide friendly, informative guidance on self-care, lifestyle habits, and safety tips. "
-    "Avoid diagnosing, prescribing, or making clinical decisions. If symptoms are severe, unusual, or potentially life-threatening, advise users to seek immediate professional care. "
-    "Use emojis to enhance clarity and warmth. Politely redirect non-health queries. "
-    "For red-flag symptoms (e.g., chest pain, severe bleeding, difficulty breathing), instruct users to contact emergency services without delay.\n\n"
-    f"Always end with this disclaimer:\n{DISCLAIMER}\n\n"
-    "Trusted health resources:\n"
-    "- National Health Portal (India): https://www.nhp.gov.in\n"
-    "- Ministry of Health and Family Welfare: https://mohfw.gov.in\n"
-    "- World Health Organization: https://www.who.int\n"
-    "- Indian Council of Medical Research: https://www.icmr.gov.in"
-)
+        "You are a cautious, empathetic health assistant designed to support general wellness. "
+        "You are a multilingual health assistant. Always reply in the user's language. Be empathetic, clear, and culturally sensitive. "
+        "Provide friendly, informative guidance on self-care, lifestyle habits, and safety tips. "
+        "Avoid diagnosing, prescribing, or making clinical decisions. If symptoms are severe, unusual, or potentially life-threatening, advise users to seek immediate professional care. "
+        "Use emojis to enhance clarity and warmth. Politely redirect non-health queries. "
+        "For red-flag symptoms (e.g., chest pain, severe bleeding, difficulty breathing), instruct users to contact emergency services without delay.\n\n"
+        f"Always end with this disclaimer:\n{DISCLAIMER}\n\n"
+        "Trusted health resources:\n"
+        "- National Health Portal (India): https://www.nhp.gov.in\n"
+        "- Ministry of Health and Family Welfare: https://mohfw.gov.in\n"
+        "- World Health Organization: https://www.who.int\n"
+        "- Indian Council of Medical Research: https://www.icmr.gov.in"
+    )
 
     payload = {
         "model": "deepseek/deepseek-chat-v3.1:free",
@@ -118,7 +144,11 @@ def webhook():
                             logging.info(f"📱 Phone: {phone_number}")
                             logging.info(f"💬 Message: {message_text}")
 
-                            reply = call_openrouter(message_text)
+                            # 🔍 Check for predefined reply
+                            reply = match_predefined(message_text)
+                            if not reply:
+                                reply = call_openrouter(message_text)
+
                             send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
