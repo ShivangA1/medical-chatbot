@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: medical-chatbot
+    env: python
+    buildCommand: ""
+    startCommand: python medbot.py
+    plan: free
