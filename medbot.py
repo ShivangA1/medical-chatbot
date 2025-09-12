@@ -57,6 +57,7 @@ https://www.icmr.gov.in'''
             {"role": "user", "content": user_text}
         ]
     }
+    logging.info(f"🧠 OpenRouter payload:\n{json.dumps(payload, indent=2)}")
 
     for attempt in range(3):
         try:
@@ -94,7 +95,6 @@ def send_whatsapp_message(to_number, message_text):
         }
     }
     try:
-        logging.info(f"🧪 Payload being sent:\n{json.dumps(payload, indent=2)}")
         response = requests.post(url, headers=headers, json=payload)
         logging.info(f"📤 WhatsApp response: {response.json()}")
     except Exception as e:
