@@ -53,7 +53,6 @@ def call_openrouter(user_text):
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        logging.info(f"🧠 OpenRouter response: {data}")
         return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         logging.error(f"❌ OpenRouter failed with: {e}")
@@ -75,8 +74,7 @@ def send_whatsapp_message(to_number, message_text):
         }
     }
     try:
-        response=requests.post(url, headers=headers, json=payload)
-        logging.info(f"📤 WhatsApp response: {response.status_code} - {response.text}")
+        requests.post(url, headers=headers, json=payload)
     except Exception as e:
         logging.error(f"WhatsApp send error: {e}")
 
