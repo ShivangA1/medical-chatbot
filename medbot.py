@@ -41,7 +41,7 @@ def call_openrouter(user_text):
     )
 
     payload = {
-        "model": "deepseek-ai/deepseek-chat",
+        "model": "deepseek/deepseek-chat",
         "temperature": 0.7,
         "messages": [
             {"role": "system", "content": system_prompt},
