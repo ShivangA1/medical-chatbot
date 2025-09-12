@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 # 🔐 Load API keys from environment variables
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+WHATSAPP_TOKEN = "EAAc4OFrgGZCQBPbkGq7Ns8O89AUZBoUqRxpTqjcrZBsxTQsTOsabQkDEaUihdZBqN3lAgeGjIoCfrVGwzJA9tNnIHXs4bBySAc5eVd3kt5pQuBquMZBrpDk2QCtZCWsrdHZCoVvbgJikFR11jzFBz7EZBoU9VlGZCKt1O5BZBwgMXrHQoFCOejSxnpNrc0JlC4UdGyX6SdUqM3ApKu4gzbowoHMq8dWqJMXfVk1Tu2UZCBFb2n3XQZDZD"
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "Shivang")  # Default fallback
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
