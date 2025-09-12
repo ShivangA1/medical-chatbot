@@ -17,35 +17,63 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 if not OPENROUTER_API_KEY or not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
     raise ValueError("Missing one or more required environment variables.")
 
+MAPMYINDIA_API_KEY = "kqkihoffqsittbvhvodrptxujmpvwbjeqdpd"  # Static key
+
 DISCLAIMER = (
     "Note: This assistant provides general health information only and is not a substitute "
     "for professional medical advice. If you think you may be experiencing a medical emergency, seek immediate care."
 )
 
-# 💬 Predefined responses
+# 💬 Predefined responses (English + Hindi + Bengali)
 PREDEFINED_RESPONSES = {
     "hi": "👋 Hello! I'm your health assistant. How can I support you today?",
     "hello": "Hi there! 😊 Feel free to ask about wellness, safety, or self-care.",
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
-    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. I'm here to support you!"
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. I'm here to support you!",
+    "नमस्ते": "🙏 नमस्ते! मैं आपका स्वास्थ्य सहायक हूँ। आपकी कैसे मदद कर सकता हूँ?",
+    "ধন্যবাদ": "আপনাকে স্বাগতম! 🙏 সুস্থ থাকুন এবং যত্ন নিন।",
+    "বিদায়": "বিদায়! 👋 আপনার সুস্বাস্থ্য কামনা করছি।"
 }
 
 # 🔍 Regex matcher for flexible input
 def match_predefined(text):
     text = text.lower().strip()
-    if re.search(r"\b(hi|hello|hey)\b", text):
-        return PREDEFINED_RESPONSES["hi"]
-    elif re.search(r"\b(thanks|thank you)\b", text):
-        return PREDEFINED_RESPONSES["thanks"]
-    elif re.search(r"\b(bye|goodbye)\b", text):
-        return PREDEFINED_RESPONSES["bye"]
-    elif re.search(r"\b(who are you|your name)\b", text):
+    if re.search(r"\b(hi|hello|hey|नमस्ते|হ্যালো)\b", text):
+        return PREDEFINED_RESPONSES.get("hi") or PREDEFINED_RESPONSES.get("नमस्ते")
+    elif re.search(r"\b(thanks|thank you|धन्यवाद|ধন্যবাদ)\b", text):
+        return PREDEFINED_RESPONSES.get("thanks") or PREDEFINED_RESPONSES.get("धन्यवाद")
+    elif re.search(r"\b(bye|goodbye|विदाई|বিদায়)\b", text):
+        return PREDEFINED_RESPONSES.get("bye") or PREDEFINED_RESPONSES.get("विदाई")
+    elif re.search(r"\b(who are you|your name|तुम कौन हो|তুমি কে)\b", text):
         return PREDEFINED_RESPONSES["who are you"]
-    elif re.search(r"\b(help|support)\b", text):
+    elif re.search(r"\b(help|support|मदद|সাহায্য)\b", text):
         return PREDEFINED_RESPONSES["help"]
     return None
+
+# 🏥 Hospital search via MapMyIndia
+def get_nearby_hospitals(lat=22.215, lon=83.396):
+    url = f"https://apis.mappls.com/advancedmaps/v1/{MAPMYINDIA_API_KEY}/search"
+    params = {
+        "keywords": "hospital",
+        "refLocation": f"{lat},{lon}",
+        "radius": 5000
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        hospitals = data.get("suggestedLocations", [])
+        if not hospitals:
+            return "🚫 No hospitals found nearby."
+        reply = "🏥 Nearby Hospitals:\n"
+        for i, h in enumerate(hospitals[:5], 1):
+            reply += f"{i}. {h['placeName']} – {h['placeAddress']} ({h['distance']})\n"
+        return reply
+    except Exception as e:
+        logging.error(f"Hospital search failed: {e}")
+        return "⚠️ Unable to fetch hospital info right now."
 
 # 🧠 OpenRouter API call
 def call_openrouter(user_text):
@@ -144,10 +172,11 @@ def webhook():
                             logging.info(f"📱 Phone: {phone_number}")
                             logging.info(f"💬 Message: {message_text}")
 
-                            # 🔍 Check for predefined reply
-                            reply = match_predefined(message_text)
-                            if not reply:
-                                reply = call_openrouter(message_text)
+                            # 🏥 Check for hospital-related query
+                            if re.search(r"\b(hospital|clinic|emergency|doctor)\b", message_text.lower()):
+                                reply = get_nearby_hospitals()
+                            else:
+                                reply = match_predefined(message_text) or call_openrouter(message_text)
 
                             send_whatsapp_message(phone_number, reply)
 
