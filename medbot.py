@@ -65,6 +65,7 @@ def call_openrouter(user_text):
         "Avoid diagnosing, prescribing, or making clinical decisions. If symptoms are severe, unusual, or potentially life-threatening, advise users to seek immediate professional care. "
         "Use emojis to enhance clarity and warmth. Politely redirect non-health queries. "
         "For red-flag symptoms (e.g., chest pain, severe bleeding, difficulty breathing), instruct users to contact emergency services without delay.\n\n"
+        "retain previous conversation context to provide coherent and relevant responses.\n\n"
         f"Always end with this disclaimer:\n{DISCLAIMER}\n\n"
         "Trusted health resources:\n"
         "- National Health Portal (India): https://www.nhp.gov.in\n"
