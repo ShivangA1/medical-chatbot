@@ -162,8 +162,8 @@ def webhook():
                         elif message_type == "button":
                             message_text = message.get("button", {}).get("payload", "")
                         else:
-                            logging.warning("⚠️ Unsupported message type.")
-                            continue
+                            logging.warning(f"⚠️ Unsupported message type: {message_type}")
+                            continue 
 
                         if not message_text or not phone_number:
                             logging.warning("⚠️ Message text is empty or missing phone number.")
