@@ -46,6 +46,7 @@ def call_openrouter(user_text):
 
     payload = {
         "model": "openchat/openchat-3.5-1210",
+        "temperature": 0.7,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_text}
@@ -59,6 +60,7 @@ def call_openrouter(user_text):
             resp = requests.post(url, headers=headers, json=payload, timeout=30)
             resp.raise_for_status()
             data = resp.json()
+            logging.info(f"✅ OpenRouter response:\n{json.dumps(data, indent=2)}")
             return data["choices"][0]["message"]["content"].strip()
         except requests.exceptions.HTTPError as e:
             logging.error(f"OpenRouter error: {e}")
