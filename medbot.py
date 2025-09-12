@@ -23,7 +23,6 @@ DISCLAIMER = (
 
 # 🧠 OpenRouter API call
 def call_openrouter(user_text):
-    logging.info(f"🧠 Incoming user_text: {user_text}")
     if not user_text or not isinstance(user_text, str):
         return "Sorry, I couldn't understand your message. Please try again."
 
@@ -59,7 +58,7 @@ def call_openrouter(user_text):
         logging.error(f"OpenRouter error: {e}")
         return "⚠️ I'm currently unable to respond. Please try again later.\n\n" + DISCLAIMER
 
-# 📤 Send WhatsApp text message
+# 📤 Send WhatsApp message
 def send_whatsapp_message(to_number, message_text):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -78,54 +77,6 @@ def send_whatsapp_message(to_number, message_text):
         requests.post(url, headers=headers, json=payload)
     except Exception as e:
         logging.error(f"WhatsApp send error: {e}")
-
-# 📤 Send WhatsApp buttons
-def send_whatsapp_buttons(to_number):
-    url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_number,
-        "type": "interactive",
-        "interactive": {
-            "type": "button",
-            "body": {
-                "text": "Hi 👋 I'm your health assistant. What would you like to do?"
-            },
-            "action": {
-                "buttons": [
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": "get_tips",
-                            "title": "🩺 Get Wellness Tips"
-                        }
-                    },
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": "find_clinic",
-                            "title": "🏥 Find Nearby Clinic"
-                        }
-                    },
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": "talk_human",
-                            "title": "👨‍⚕️ Talk to a Human"
-                        }
-                    }
-                ]
-            }
-        }
-    }
-    try:
-        requests.post(url, headers=headers, json=payload)
-    except Exception as e:
-        logging.error(f"WhatsApp button send error: {e}")
 
 # 🌐 Webhook verification
 @app.route('/webhook', methods=['GET'])
@@ -154,44 +105,14 @@ def webhook():
                     contact_name = contacts[0]["profile"]["name"] if contacts else "Unknown"
 
                     for message in messages:
-                        message_type = message.get("type")
-                        message_text = ""
+                        message_text = message.get("text", {}).get("body", "")
+                        if message_text and phone_number:
+                            logging.info(f"👤 Name: {contact_name}")
+                            logging.info(f"📱 Phone: {phone_number}")
+                            logging.info(f"💬 Message: {message_text}")
 
-                        if message_type == "text":
-                            message_text = message.get("text", {}).get("body", "")
-                        elif message_type == "interactive":
-                            interactive_type = message.get("interactive", {}).get("type")
-                            if interactive_type == "button_reply":
-                                message_text = message.get("interactive", {}).get("button_reply", {}).get("id", "")
-                            else:
-                                logging.warning(f"⚠️ Unsupported interactive subtype: {interactive_type}")
-                                continue
-                        else:
-                            logging.warning(f"⚠️ Unsupported message type: {message_type}")
-                            continue
-
-                        if not message_text or not phone_number:
-                            logging.warning("⚠️ Message text is empty or missing phone number.")
-                            continue
-
-                        logging.info(f"👤 Name: {contact_name}")
-                        logging.info(f"📱 Phone: {phone_number}")
-                        logging.info(f"💬 Message: {message_text}")
-
-                        # Handle button replies
-                        if message_text == "get_tips":
-                            reply = "🌿 Wellness Tips:\n- Stay hydrated\n- Sleep 7–8 hrs\n- Take short walks\n\n" + DISCLAIMER
-                        elif message_text == "find_clinic":
-                            reply = "📍 Please share your location so I can help you find nearby clinics.\n\n" + DISCLAIMER
-                        elif message_text == "talk_human":
-                            reply = "👨‍⚕️ You can reach a health professional at 1800-XYZ-HELP or visit https://www.nhp.gov.in\n\n" + DISCLAIMER
-                        elif message_text.lower() in ["hi", "hello", "start"]:
-                            send_whatsapp_buttons(phone_number)
-                            continue
-                        else:
                             reply = call_openrouter(message_text)
-
-                        send_whatsapp_message(phone_number, reply)
+                            send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
 
