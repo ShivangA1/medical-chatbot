@@ -23,6 +23,7 @@ DISCLAIMER = (
 
 # 🧠 OpenRouter API call
 def call_openrouter(user_text):
+    logging.info(f"🧠 Incoming user_text: {user_text}")
     if not user_text or not isinstance(user_text, str):
         return "Sorry, I couldn't understand your message. Please try again."
 
@@ -153,28 +154,39 @@ def webhook():
                     contact_name = contacts[0]["profile"]["name"] if contacts else "Unknown"
 
                     for message in messages:
+                        message_type = message.get("type")
+                        message_text = ""
+
+                        if message_type == "text":
+                            message_text = message.get("text", {}).get("body", "")
+                        elif message_type == "button":
+                            message_text = message.get("button", {}).get("payload", "")
+                        else:
+                            logging.warning("⚠️ Unsupported message type.")
+                            continue
+
+                        if not message_text or not phone_number:
+                            logging.warning("⚠️ Message text is empty or missing phone number.")
+                            continue
+
                         logging.info(f"👤 Name: {contact_name}")
                         logging.info(f"📱 Phone: {phone_number}")
-                        logging.info(f"💬 Message: {message.get('text', {}).get('body', '')}")
+                        logging.info(f"💬 Message: {message_text}")
 
-                        if message.get("type") == "button":
-                            button_id = message.get("button", {}).get("payload")
-                            if button_id == "get_tips":
-                                reply = "🌿 Wellness Tips:\n- Stay hydrated\n- Sleep 7–8 hrs\n- Take short walks\n\n" + DISCLAIMER
-                            elif button_id == "find_clinic":
-                                reply = "📍 Please share your location so I can help you find nearby clinics.\n\n" + DISCLAIMER
-                            elif button_id == "talk_human":
-                                reply = "👨‍⚕️ You can reach a health professional at 1800-XYZ-HELP or visit https://www.nhp.gov.in\n\n" + DISCLAIMER
-                            else:
-                                reply = "🤖 Sorry, I didn't recognize that option.\n\n" + DISCLAIMER
-                            send_whatsapp_message(phone_number, reply)
+                        # Handle button replies
+                        if message_text == "get_tips":
+                            reply = "🌿 Wellness Tips:\n- Stay hydrated\n- Sleep 7–8 hrs\n- Take short walks\n\n" + DISCLAIMER
+                        elif message_text == "find_clinic":
+                            reply = "📍 Please share your location so I can help you find nearby clinics.\n\n" + DISCLAIMER
+                        elif message_text == "talk_human":
+                            reply = "👨‍⚕️ You can reach a health professional at 1800-XYZ-HELP or visit https://www.nhp.gov.in\n\n" + DISCLAIMER
+                        elif message_text.lower() in ["hi", "hello", "start"]:
+                            send_whatsapp_buttons(phone_number)
+                            continue
                         else:
-                            # First-time message or free text
-                            if message.get("text", {}).get("body", "").lower() in ["hi", "hello", "start"]:
-                                send_whatsapp_buttons(phone_number)
-                            else:
-                                reply = call_openrouter(message.get("text", {}).get("body", ""))
-                                send_whatsapp_message(phone_number, reply)
+                            reply = call_openrouter(message_text)
+
+                        send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
 
