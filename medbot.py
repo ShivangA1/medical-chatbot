@@ -45,7 +45,7 @@ def call_openrouter(user_text):
     )
 
     payload = {
-        "model": "gryphe/mythomist-7b",
+        "model": "mistralai/mistral-7b-instruct:free",
         "temperature": 0.7,
         "messages": [
             {"role": "system", "content": system_prompt},
