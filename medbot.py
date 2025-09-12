@@ -29,7 +29,7 @@ PREDEFINED_RESPONSES = {
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
-    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. I'm here to support you!"
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Send 'reset' anytime to clear memory and start fresh!"
 }
 
 # 🧠 Session-based memory store
@@ -157,6 +157,12 @@ def webhook():
                             logging.info(f"👤 Name: {contact_name}")
                             logging.info(f"📱 Phone: {phone_number}")
                             logging.info(f"💬 Message: {message_text}")
+                            # 🧹 Clear memory if user sends "reset"
+                            if message_text.lower().strip() == "reset":
+                                user_sessions.pop(phone_number, None)
+                                reply = "🧹 Memory cleared. Let's start fresh!"
+                                send_whatsapp_message(phone_number, reply)
+                                continue  # Skip further processing
 
                             # 🔍 Check for predefined reply
                             reply = match_predefined(message_text)
