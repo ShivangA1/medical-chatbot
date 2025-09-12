@@ -159,11 +159,16 @@ def webhook():
 
                         if message_type == "text":
                             message_text = message.get("text", {}).get("body", "")
-                        elif message_type == "button":
-                            message_text = message.get("button", {}).get("payload", "")
+                        elif message_type == "interactive":
+                            interactive_type = message.get("interactive", {}).get("type")
+                            if interactive_type == "button_reply":
+                                message_text = message.get("interactive", {}).get("button_reply", {}).get("id", "")
+                            else:
+                                logging.warning(f"⚠️ Unsupported interactive subtype: {interactive_type}")
+                                continue
                         else:
                             logging.warning(f"⚠️ Unsupported message type: {message_type}")
-                            continue 
+                            continue
 
                         if not message_text or not phone_number:
                             logging.warning("⚠️ Message text is empty or missing phone number.")
