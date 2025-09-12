@@ -157,12 +157,53 @@ def webhook():
                             logging.info(f"👤 Name: {contact_name}")
                             logging.info(f"📱 Phone: {phone_number}")
                             logging.info(f"💬 Message: {message_text}")
-                            # 🧹 Clear memory if user sends "reset"
+                                                        # 🧹 Clear memory
                             if message_text.lower().strip() == "reset":
                                 user_sessions.pop(phone_number, None)
                                 reply = "🧹 Memory cleared. Let's start fresh!"
                                 send_whatsapp_message(phone_number, reply)
-                                continue  # Skip further processing
+                                continue
+
+                            # 🧪 Debug memory
+                            elif message_text.lower().strip() == "debug":
+                                history = user_sessions.get(phone_number, [])
+                                if not history:
+                                    reply = "🧪 No memory found for this session."
+                                else:
+                                    formatted = "\n".join([f"{m['role']}: {m['content']}" for m in history])
+                                    reply = f"🧠 Current memory:\n{formatted}"
+                                send_whatsapp_message(phone_number, reply)
+                                continue
+
+                            # 🧠 Summarize memory
+                            elif message_text.lower().strip() == "summary":
+                                history = user_sessions.get(phone_number, [])
+                                if not history:
+                                    reply = "🧠 No memory to summarize yet."
+                                else:
+                                    summary_prompt = [
+                                        {"role": "system", "content": "Summarize the following conversation in 2-3 lines for context retention."}
+                                    ] + history
+                                    payload = {
+                                        "model": "deepseek/deepseek-chat-v3.1:free",
+                                        "temperature": 0.5,
+                                        "messages": summary_prompt
+                                    }
+                                    try:
+                                        resp = requests.post("https://openrouter.ai/api/v1/chat/completions",
+                                                            headers={
+                                                                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                                                                "Content-Type": "application/json"
+                                                            },
+                                                            json=payload, timeout=30)
+                                        resp.raise_for_status()
+                                        summary = resp.json()["choices"][0]["message"]["content"].strip()
+                                        reply = f"🧠 Summary:\n{summary}"
+                                    except Exception as e:
+                                        logging.error(f"Summary error: {e}")
+                                        reply = "⚠️ Couldn't generate summary. Try again later."
+                                send_whatsapp_message(phone_number, reply)
+                                continue
 
                             # 🔍 Check for predefined reply
                             reply = match_predefined(message_text)
