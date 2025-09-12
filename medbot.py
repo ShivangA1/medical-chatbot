@@ -32,6 +32,9 @@ PREDEFINED_RESPONSES = {
     "help": "You can ask me about symptoms, healthy habits, or how to stay safe. I'm here to support you!"
 }
 
+# 🧠 Session-based memory store
+user_sessions = {}  # {phone_number: [{"role": "user", "content": ...}, {"role": "assistant", "content": ...}]}
+
 # 🔍 Regex matcher for flexible input
 def match_predefined(text):
     text = text.lower().strip()
@@ -48,9 +51,16 @@ def match_predefined(text):
     return None
 
 # 🧠 OpenRouter API call
-def call_openrouter(user_text):
+def call_openrouter(user_text, phone_number):
     if not user_text or not isinstance(user_text, str):
         return "Sorry, I couldn't understand your message. Please try again."
+
+    # Initialize session if not present
+    if phone_number not in user_sessions:
+        user_sessions[phone_number] = []
+
+    # Append user message to session
+    user_sessions[phone_number].append({"role": "user", "content": user_text})
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -74,24 +84,27 @@ def call_openrouter(user_text):
         "- Indian Council of Medical Research: https://www.icmr.gov.in"
     )
 
+    # Build message history
+    messages = [{"role": "system", "content": system_prompt}] + user_sessions[phone_number]
+
     payload = {
         "model": "deepseek/deepseek-chat-v3.1:free",
         "temperature": 0.7,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_text}
-        ]
+        "messages": messages
     }
 
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        bot_reply = data["choices"][0]["message"]["content"].strip()
+
+        # Append bot reply to session
+        user_sessions[phone_number].append({"role": "assistant", "content": bot_reply})
+        return bot_reply
     except Exception as e:
         logging.error(f"❌ OpenRouter failed with: {e}")
         return "⚠️ I'm currently unable to respond. Please try again later.\n\n" + DISCLAIMER
-
 # 📤 Send WhatsApp message
 def send_whatsapp_message(to_number, message_text):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
@@ -148,7 +161,7 @@ def webhook():
                             # 🔍 Check for predefined reply
                             reply = match_predefined(message_text)
                             if not reply:
-                                reply = call_openrouter(message_text)
+                                reply = call_openrouter(message_text, phone_number)
 
                             send_whatsapp_message(phone_number, reply)
 
