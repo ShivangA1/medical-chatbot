@@ -25,6 +25,10 @@ DISCLAIMER = (
 
 # 🧠 OpenRouter API call with retry logic
 def call_openrouter(user_text):
+    if not user_text or not isinstance(user_text, str):
+        logging.warning("⚠️ Invalid user_text passed to OpenRouter.")
+        return "Sorry, I couldn't understand your message. Please try again."
+
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -32,23 +36,13 @@ def call_openrouter(user_text):
     }
 
     system_prompt = (
-        '''You are a cautious, empathetic health assistant. Offer general wellness advice, safety tips, and self-care suggestions based on user input. Do not diagnose, prescribe, or make clinical decisions. If symptoms are severe, unusual, or persistent, encourage professional medical care.
-
-- Precautions  
-- Self-care tips  
-- Reminder to consult a healthcare provider
-
-Keep responses concise, jargon-free, and interactive. Use emojis to enhance clarity and emotional tone. If input is unrelated to health, politely redirect. For red-flag symptoms (e.g., chest pain, severe bleeding, dizziness, unconsciousness), instruct immediate emergency care-no other info.
-
-Always end with this disclaimer:
-{disclaimer}
-
-For more info:
-https://www.nhp.gov.in  
-https://mohfw.gov.in  
-https://www.who.int  
-https://www.icmr.gov.in'''
-    ).format(disclaimer=DISCLAIMER)
+        "You are a cautious, empathetic health assistant. Offer general wellness advice, safety tips, and self-care suggestions. "
+        "Do not diagnose, prescribe, or make clinical decisions. If symptoms are severe or unusual, encourage professional care. "
+        "Respond clearly and warmly:\n- Precautions\n- Self-care tips\n- Reminder to consult a provider\n"
+        "Use emojis for clarity. Redirect non-health queries. For red-flag symptoms (e.g., chest pain, severe bleeding), instruct emergency care only.\n\n"
+        f"Always end with this disclaimer:\n{DISCLAIMER}\n\n"
+        "For more info:\nhttps://www.nhp.gov.in\nhttps://mohfw.gov.in\nhttps://www.who.int\nhttps://www.icmr.gov.in"
+    )
 
     payload = {
         "model": "openchat/openchat-3.5-1210",
@@ -57,6 +51,7 @@ https://www.icmr.gov.in'''
             {"role": "user", "content": user_text}
         ]
     }
+
     logging.info(f"🧠 OpenRouter payload:\n{json.dumps(payload, indent=2)}")
 
     for attempt in range(3):
@@ -66,13 +61,9 @@ https://www.icmr.gov.in'''
             data = resp.json()
             return data["choices"][0]["message"]["content"].strip()
         except requests.exceptions.HTTPError as e:
-            if resp.status_code == 429:
-                wait_time = int(resp.headers.get("Retry-After", 2 ** attempt))
-                logging.warning(f"Rate limited. Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
-            else:
-                logging.error(f"OpenRouter error: {e}")
-                break
+            logging.error(f"OpenRouter error: {e}")
+            logging.error(f"Response content: {resp.text}")
+            break
         except Exception as e:
             logging.error(f"OpenRouter error: {e}")
             break
