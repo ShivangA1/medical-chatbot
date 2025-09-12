@@ -1,17 +1,17 @@
 import os
-import re
 import json
 import requests
 import logging
-from flask import Flask, request, jsonify, Response
+import time
+from flask import Flask, request, Response
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# 🔐 Load API keys from environment variables
+# 🔐 Load secrets from environment variables
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "Shivang")  # Default fallback
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "Shivang")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 if not OPENROUTER_API_KEY or not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
@@ -23,51 +23,60 @@ DISCLAIMER = (
     "seek immediate care."
 )
 
-# 🧠 OpenRouter API call
+# 🧠 OpenRouter API call with retry logic
 def call_openrouter(user_text):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
+
     system_prompt = (
-        "You are a cautious and empathetic health information assistant. "
-        "Your role is to offer general wellness guidance, safety precautions, and self-care suggestions based on user input. "
-        "Do not diagnose conditions, recommend treatments, or make clinical decisions. "
-        "If symptoms appear severe, unusual, or persistent, gently encourage the user to seek professional medical care. "
-        "Always prioritize clarity, emotional support, and responsible communication. "
-        "Respond in a clear, structured format:\n"
-        "- Overview of general guidance\n"
-        "- Relevant precautions\n"
-        "- Suggested self-care tips\n"
-        "- Reminder to consult a healthcare professional if needed\n"
-        "Keep responses concise and avoid unnecessary medical jargon. "
-        "Also make it interactive by asking relevant questions based on user input. "
-        "Use emojis where appropriate to enhance clarity and warmth. "
-        "strictly If the user input is not related to health queries, politely inform them that you can only assist with health-related queries. "
-        "If the user gives red-flag symptoms like chest pain, dizziness, severe bleeding, or loss of consciousness, immediately tell them to seek emergency medical help. "
-        "Always end with the disclaimer:\n\n" + DISCLAIMER +
-        "\nFor more information:\n"
-        "https://www.nhp.gov.in\n"
-        "https://mohfw.gov.in\n"
-        "https://www.who.int\n"
-        "https://www.icmr.gov.in\n"
-    )
+        '''You are a cautious, empathetic health assistant. Offer general wellness advice, safety tips, and self-care suggestions based on user input. Do not diagnose, prescribe, or make clinical decisions. If symptoms are severe, unusual, or persistent, encourage professional medical care.
+
+- Precautions  
+- Self-care tips  
+- Reminder to consult a healthcare provider
+
+Keep responses concise, jargon-free, and interactive. Use emojis to enhance clarity and emotional tone. If input is unrelated to health, politely redirect. For red-flag symptoms (e.g., chest pain, severe bleeding, dizziness, unconsciousness), instruct immediate emergency care—no other info.
+
+Always end with this disclaimer:
+{disclaimer}
+
+For more info:
+https://www.nhp.gov.in  
+https://mohfw.gov.in  
+https://www.who.int  
+https://www.icmr.gov.in'''
+    ).format(disclaimer=DISCLAIMER)
+
     payload = {
-        "model": "mistralai/mistral-7b-instruct:free",
+        "model": "openchat/openchat-3.5-1210",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_text}
         ]
     }
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        logging.error(f"OpenRouter error: {e}")
-        return "Sorry, I'm unable to process your request right now. Please try again later."
+
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"].strip()
+        except requests.exceptions.HTTPError as e:
+            if resp.status_code == 429:
+                wait_time = int(resp.headers.get("Retry-After", 2 ** attempt))
+                logging.warning(f"Rate limited. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logging.error(f"OpenRouter error: {e}")
+                break
+        except Exception as e:
+            logging.error(f"OpenRouter error: {e}")
+            break
+
+    return "⚠️ I'm currently experiencing high traffic. Please try again shortly.\n\n" + DISCLAIMER
 
 # 📤 Send WhatsApp message
 def send_whatsapp_message(to_number, message_text):
@@ -127,15 +136,20 @@ def webhook():
 
                     for message in messages:
                         message_text = message.get("text", {}).get("body", "")
+                        if not message_text:
+                            logging.warning("⚠️ Message is not text or is empty.")
+                            continue
+
                         logging.info(f"👤 Name: {contact_name}")
                         logging.info(f"📱 Phone: {phone_number}")
                         logging.info(f"💬 Message: {message_text}")
 
                         reply = call_openrouter(message_text)
-                        reply += f"\n\n{DISCLAIMER}"
                         send_whatsapp_message(phone_number, reply)
+                elif "statuses" in value:
+                    logging.info("📬 Delivery status received. No user message to process.")
                 else:
-                    logging.warning("⚠️ No messages found in value.")
+                    logging.warning("⚠️ No messages or statuses found.")
 
     return Response("EVENT_RECEIVED", status=200)
 
