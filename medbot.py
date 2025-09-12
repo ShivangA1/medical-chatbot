@@ -38,7 +38,7 @@ def call_openrouter(user_text):
 - Self-care tips  
 - Reminder to consult a healthcare provider
 
-Keep responses concise, jargon-free, and interactive. Use emojis to enhance clarity and emotional tone. If input is unrelated to health, politely redirect. For red-flag symptoms (e.g., chest pain, severe bleeding, dizziness, unconsciousness), instruct immediate emergency care—no other info.
+Keep responses concise, jargon-free, and interactive. Use emojis to enhance clarity and emotional tone. If input is unrelated to health, politely redirect. For red-flag symptoms (e.g., chest pain, severe bleeding, dizziness, unconsciousness), instruct immediate emergency care-no other info.
 
 Always end with this disclaimer:
 {disclaimer}
