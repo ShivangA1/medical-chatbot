@@ -45,7 +45,7 @@ def call_openrouter(user_text):
     )
 
     payload = {
-        "model": "openchat/openchat-3.5-1210",
+        "model": "gryphe/mythomist-7b",
         "temperature": 0.7,
         "messages": [
             {"role": "system", "content": system_prompt},
