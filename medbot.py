@@ -151,12 +151,28 @@ def send_whatsapp_message(to_number, message_text):
 
 def send_whatsapp_interactive(to_number, interactive_payload):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
-    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
-    payload = {"messaging_product": "whatsapp", "to": to_number, "type": "interactive", "interactive": interactive_payload}
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    # Send request and capture response
     try:
-        requests.post(url, headers=headers, json=payload)
-        log_interaction(to_number, bot_message=f"[Interactive Message] {json.dumps(interactive_payload)}",
-                        session_state=load_session(to_number).state)
+        resp = requests.post(url, headers=headers, json={
+            "messaging_product": "whatsapp",
+            "to": to_number,
+            "type": "interactive",
+            "interactive": interactive_payload
+        })
+        logging.info(f"WhatsApp API status: {resp.status_code}, response: {resp.text}")
+        if resp.status_code != 200:
+            logging.error(f"Failed to send interactive message: {resp.text}")
+        else:
+            log_interaction(
+                to_number,
+                bot_message=f"[Interactive Message] {json.dumps(interactive_payload)}",
+                session_state=load_session(to_number).state
+            )
     except Exception as e:
         logging.error(f"Interactive send error: {e}")
 
@@ -165,9 +181,16 @@ def get_symptom_page(page=0, page_size=10):
     start = page * page_size
     end = start + page_size
     page_symptoms = cols[start:end]
-    rows = [{"id": f"symptom_{s.lower()}", "title": s.replace("_", " ").title()} for s in page_symptoms]
+
+    # Truncate titles to 24 characters (WhatsApp requirement)
+    rows = [{
+        "id": f"symptom_{s.lower()}",
+        "title": s.replace("_", " ").title()[:24]
+    } for s in page_symptoms]
+
     if end < len(cols):
         rows.append({"id": "next_page", "title": "➡ Next Page"})
+    
     return rows
 
 # 🔹 Start symptom checker reliably
