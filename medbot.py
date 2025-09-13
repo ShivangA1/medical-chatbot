@@ -127,6 +127,16 @@ def generate_summary(phone_number):
         logging.error(f"Summary error: {e}")
         return "⚠️ Couldn't generate summary. Try again later."
 
+def log_interaction(phone_number, user_message=None, bot_message=None, session_state=None):
+    log_parts = [f"📞 Phone: {phone_number}"]
+    if user_message:
+        log_parts.append(f"👤 User: {user_message}")
+    if bot_message:
+        log_parts.append(f"🤖 Bot: {bot_message}")
+    if session_state:
+        log_parts.append(f"⚙️ State: {session_state}")
+    logging.info(" | ".join(log_parts))
+
 
 # 📤 WhatsApp message functions
 def send_whatsapp_message(to_number, message_text):
@@ -135,6 +145,7 @@ def send_whatsapp_message(to_number, message_text):
     payload = {"messaging_product": "whatsapp", "to": to_number, "type": "text", "text": {"body": message_text}}
     try:
         requests.post(url, headers=headers, json=payload)
+        log_interaction(to_number, bot_message=message_text, session_state=load_session(to_number).state)
     except Exception as e:
         logging.error(f"WhatsApp send error: {e}")
 
@@ -144,6 +155,8 @@ def send_whatsapp_interactive(to_number, interactive_payload):
     payload = {"messaging_product": "whatsapp", "to": to_number, "type": "interactive", "interactive": interactive_payload}
     try:
         requests.post(url, headers=headers, json=payload)
+        log_interaction(to_number, bot_message=f"[Interactive Message] {json.dumps(interactive_payload)}",
+                        session_state=load_session(to_number).state)
     except Exception as e:
         logging.error(f"Interactive send error: {e}")
 
@@ -157,21 +170,22 @@ def get_symptom_page(page=0, page_size=10):
         rows.append({"id": "next_page", "title": "➡ Next Page"})
     return rows
 
+# 🔹 Start symptom checker reliably
 def start_symptom_checker(phone_number):
-    session = load_session(phone_number)
-    if not session:
-        session = UserSession(phone_number=phone_number)
+    session = get_or_create_session(phone_number)
     session.state = "symptom_check"
     session.selected_symptoms = json.dumps([])
     session.current_page = 0
     save_session(session)
+
     rows = get_symptom_page(page=0)
     interactive = {
         "type": "list",
-        "body": {"text": "Select your symptom:"},
+        "body": {"text": "🩺 Select your symptom:"},
         "footer": {"text": "You can select one symptom per message."},
         "action": {"button": "Symptoms", "sections": [{"title": "Symptoms", "rows": rows}]}
     }
+    logging.info(f"Sending symptom list to {phone_number}")
     send_whatsapp_interactive(phone_number, interactive)
 
 def handle_symptom_selection(phone_number, selection_id):
@@ -202,6 +216,14 @@ def handle_symptom_selection(phone_number, selection_id):
         "action": {"buttons": [{"type": "reply", "reply": {"id": "add_more", "title": "Add More"}}, {"type": "reply", "reply": {"id": "finish", "title": "Finish"}}]}
     }
     send_whatsapp_interactive(phone_number, interactive)
+
+# 🧠 Session helper
+def get_or_create_session(phone_number):
+    session = load_session(phone_number)
+    if not session:
+        session = UserSession(phone_number=phone_number)
+        save_session(session)
+    return session
 
 def finish_symptom_check(phone_number):
     session = load_session(phone_number)
@@ -278,11 +300,14 @@ def verify_webhook():
         return Response(challenge, status=200)
     return Response("Verification failed", status=403)
 
+# 🌐 Webhook POST
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
+    logging.info(f"Webhook received: {json.dumps(data)}")
     if data.get("object") != "whatsapp_business_account":
         return Response("EVENT_RECEIVED", status=200)
+
     for entry in data.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value", {})
@@ -293,12 +318,13 @@ def webhook():
             phone_number = contacts[0]["wa_id"] if contacts else None
             if not phone_number:
                 continue
-            session = load_session(phone_number)
-            if not session:
-                session = UserSession(phone_number=phone_number)
-                save_session(session)
+
+            session = get_or_create_session(phone_number)
+
             for message in messages:
                 text = message.get("text", {}).get("body", "").strip().lower()
+                logging.info(f"Incoming message from {phone_number}: {text}")
+                
                 interactive_id = None
                 if "interactive" in message:
                     interactive = message["interactive"]
@@ -306,6 +332,8 @@ def webhook():
                         interactive_id = interactive["button_reply"]["id"]
                     elif interactive["type"] == "list_reply":
                         interactive_id = interactive["list_reply"]["id"]
+                # Log user message
+                log_interaction(phone_number, user_message=text, session_state=session.state)
 
                 # Commands
                 if text == "/reset":
@@ -322,11 +350,12 @@ def webhook():
                     send_whatsapp_message(phone_number, reply)
                     continue
 
-                elif text == "check" and session.state == "idle":
+                 # Start symptom check
+                if text == "check":
                     start_symptom_checker(phone_number)
                     continue
 
-                # Interactive replies
+                # Handle interactive replies
                 if interactive_id:
                     if interactive_id.startswith("symptom_") or interactive_id == "next_page":
                         handle_symptom_selection(phone_number, interactive_id)
@@ -334,7 +363,7 @@ def webhook():
                         rows = get_symptom_page(page=session.current_page)
                         interactive_payload = {
                             "type": "list",
-                            "body": {"text": "Select your symptom:"},
+                            "body": {"text": "🩺 Select your symptom:"},
                             "footer": {"text": "You can select one symptom per message."},
                             "action": {"button": "Symptoms", "sections": [{"title": "Symptoms", "rows": rows}]}
                         }
@@ -352,6 +381,7 @@ def webhook():
                 # OpenRouter fallback
                 reply = call_openrouter(text, phone_number)
                 send_whatsapp_message(phone_number, reply)
+
     return Response("EVENT_RECEIVED", status=200)
 
 @app.route('/')
