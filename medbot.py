@@ -178,11 +178,21 @@ def start_symptom_checker(phone_number):
 
 def handle_symptom_selection(phone_number, selection_id):
     session = load_session(phone_number)
-    if not session or session.state != "symptom_check":
+    if not session:
         return
 
     selected_symptoms = json.loads(session.selected_symptoms)
 
+    # User clicked "Finish" → exit loop
+    if selection_id == "finish":
+        session.state = "idle"
+        session.selected_symptoms = json.dumps([])
+        session.current_page = 0
+        save_session(session)
+        send_whatsapp_message(phone_number, "✅ Symptom check finished. Stay safe!")
+        return
+
+    # User clicked "Next Page" → paginate symptoms
     if selection_id == "next_page":
         session.current_page += 1
         save_session(session)
@@ -196,11 +206,6 @@ def handle_symptom_selection(phone_number, selection_id):
         send_whatsapp_interactive(phone_number, interactive)
         return
 
-    if selection_id == "finish":
-        # User finished adding symptoms
-        finish_symptom_check(phone_number)
-        return
-
     # Add selected symptom
     symptom_name = selection_id.replace("symptom_", "").replace("_", " ").lower()
     if symptom_name not in selected_symptoms:
@@ -209,6 +214,7 @@ def handle_symptom_selection(phone_number, selection_id):
     session.selected_symptoms = json.dumps(selected_symptoms)
     save_session(session)
 
+    # Send "Add more or Finish" buttons
     interactive = {
         "type": "button",
         "body": {"text": f"✅ Added: {symptom_name.title()}. Add more or finish?"},
@@ -218,6 +224,7 @@ def handle_symptom_selection(phone_number, selection_id):
         ]}
     }
     send_whatsapp_interactive(phone_number, interactive)
+
 
 
 # 🧠 Session helper
@@ -238,9 +245,13 @@ def finish_symptom_check(phone_number):
 
     if "error" in result:
         send_whatsapp_message(phone_number, f"⚠️ {result['error']}")
+        session.state = "idle"
+        session.selected_symptoms = json.dumps([])
+        session.current_page = 0
+        save_session(session)
         return
 
-    # Build result text
+    # Build main result text
     reply = (
         f"🩺 Based on the symptoms you provided, you may have: {result['disease']} "
         f"({result.get('confidence','N/A')}% confidence)\n"
@@ -249,16 +260,16 @@ def finish_symptom_check(phone_number):
         f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
     )
 
-    # Confidence and warning notes
+    # Add confidence/warning notes
     if result.get('confidence', 0) < 70:
-        reply += "\n\n ⚠️ Confidence is low. Consider adding more symptoms."
+        reply += "\n\n⚠️ Confidence is low. Consider adding more symptoms."
     if len(symptoms) < 3:
-        reply += "\n\n ⚠️ Very few symptoms provided. Accuracy may be limited."
+        reply += "\n\n⚠️ Very few symptoms provided. Accuracy may be limited."
 
     reply += f"\n\n{DISCLAIMER}"
     send_whatsapp_message(phone_number, reply)
 
-    # If follow-up symptoms exist, show them interactively
+    # Handle follow-up symptoms (if any)
     if "followup" in result and result["followup"]:
         rows = [{"id": f"symptom_{s}", "title": s.replace('_', ' ').title()} for s in result["followup"]]
         interactive_payload = {
@@ -268,14 +279,15 @@ def finish_symptom_check(phone_number):
             "action": {"button": "Select Symptom", "sections": [{"title": "Follow-Up Symptoms", "rows": rows + [{"id": "finish", "title": "✅ Finish"}]}]}
         }
         send_whatsapp_interactive(phone_number, interactive_payload)
-        session.state = "symptom_check"  # stay in selection mode
+        session.state = "symptom_check"  # stay in selection mode for follow-ups
         save_session(session)
     else:
-        # No follow-up → reset session
+        # No follow-ups → reset session completely
         session.state = "idle"
         session.selected_symptoms = json.dumps([])
         session.current_page = 0
         save_session(session)
+
 
 
 
