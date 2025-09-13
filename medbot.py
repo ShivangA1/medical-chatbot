@@ -69,20 +69,7 @@ PREDEFINED_RESPONSES = {
     ),
 }
 
-FOLLOW_UP_QUESTIONS = {
-    "fever": ["Is the fever continuous or intermittent?", "Do you also have chills or sweating?"],
-    "vomiting": ["Is it accompanied by abdominal pain?", "How many times have you vomited today?"],
-    "headache": ["Is the pain sharp or dull?", "Do you feel sensitivity to light or sound?"],
-    "fatigue": ["Is it affecting your daily activities?", "Do you feel sleepy or weak?"]
-    # Add more as needed
-}
 
-def get_follow_up_questions(symptoms):
-    questions = []
-    for symptom in symptoms:
-        if symptom in FOLLOW_UP_QUESTIONS:
-            questions.extend(FOLLOW_UP_QUESTIONS[symptom])
-    return questions
 
 def match_predefined(text):
     text = text.lower().strip()
@@ -129,6 +116,16 @@ def clear_session(phone_number):
     if session:
         db.session.delete(session)
         db.session.commit()
+
+def generate_followups(symptoms, phone_number):
+    prompt = (
+        f"A user reported these symptoms: {', '.join(symptoms)}.\n"
+        "Generate 3–4 follow-up questions that would help refine a health diagnosis. "
+        "Be empathetic, medically cautious, and avoid clinical advice. "
+        "Use simple language and include emojis for warmth."
+    )
+    return call_openrouter(prompt, phone_number)
+
 
 # 🧠 OpenRouter API call
 def call_openrouter(user_text, phone_number):
@@ -284,7 +281,7 @@ def webhook():
                                 symptoms = [s.strip().lower() for s in raw.split(",")]
 
                                 # Load known symptoms from your model or dataset
-                                known_symptoms = predict_disease.__globals__.get("training_columns", [])  # or load from file
+                                known_symptoms = predict_disease.__globals__.get("training_columns", [])
                                 valid_symptoms = [s for s in symptoms if s in known_symptoms]
                                 unknown_symptoms = [s for s in symptoms if s not in known_symptoms]
 
@@ -299,12 +296,11 @@ def webhook():
                                     send_whatsapp_message(phone_number, f"🤖 I didn’t recognize: {', '.join(unknown_symptoms)}.\nHere's what I found:\n{fallback}")
                                     continue
 
-                                # Ask follow-up questions if input is sparse
+                                # Ask AI-generated follow-up questions if input is sparse
                                 if len(valid_symptoms) < 3:
-                                    follow_ups = get_follow_up_questions(valid_symptoms)
-                                    if follow_ups:
-                                        send_whatsapp_message(phone_number, "🩺 To help me be more accurate, could you answer these:\n" + "\n".join(follow_ups))
-                                        continue
+                                    follow_ups = generate_followups(valid_symptoms, phone_number)
+                                    send_whatsapp_message(phone_number, "🩺 To help me be more accurate, could you answer these:\n" + follow_ups)
+                                    continue
 
                                 # Run prediction
                                 result = predict_disease(valid_symptoms, days=2)
@@ -318,9 +314,8 @@ def webhook():
                                         f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
                                     )
                                 send_whatsapp_message(phone_number, reply)
-                                continue  
-
-                            # 🔍 Check for predefined reply
+                                continue
+                                                        # 🔍 Check for predefined reply
                             reply = match_predefined(message_text)
                             if not reply:
                                 reply = call_openrouter(message_text, phone_number)
