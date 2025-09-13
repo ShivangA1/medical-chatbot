@@ -7,6 +7,8 @@ from flask import Flask, request, Response
 from flask_sqlalchemy import SQLAlchemy
 from predictor import predict_disease
 from predictor import training_columns
+from difflib import get_close_matches
+
 
 
 
@@ -127,6 +129,11 @@ def generate_followups(symptoms, phone_number):
         "Use simple language and include emojis for warmth."
     )
     return call_openrouter(prompt, phone_number)
+
+def match_symptom(s, known_symptoms):
+    match = get_close_matches(s, known_symptoms, n=1, cutoff=0.8)
+    return match[0] if match else s
+
 
 
 # 🧠 OpenRouter API call
