@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import csv
-import re
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
@@ -46,6 +45,9 @@ load_dictionaries()
 # Map symptoms to indices
 symptoms_dict = {symptom: idx for idx, symptom in enumerate(cols)}
 
+def get_known_symptoms():
+    return list(symptoms_dict.keys())
+
 def calc_severity(symptoms, days):
     score = sum(severityDictionary.get(symptom, 0) for symptom in symptoms)
     severity = (score * days) / (len(symptoms) + 1)
@@ -62,9 +64,10 @@ def sec_predict(symptoms):
 def predict_disease(symptoms, days):
     symptoms = [s.strip().replace(" ", "_").lower() for s in symptoms]
     matched = [s for s in symptoms if s in symptoms_dict]
+    unknown = [s for s in symptoms if s not in symptoms_dict]
 
     if not matched:
-        return {"error": "No valid symptoms found."}
+        return {"error": "No valid symptoms found.", "matched": [], "unknown": unknown}
 
     disease = sec_predict(matched)
     description = description_list.get(disease, "No description available.")
@@ -75,5 +78,7 @@ def predict_disease(symptoms, days):
         "disease": disease,
         "description": description,
         "precautions": precautions,
-        "severity": severity
+        "severity": severity,
+        "matched": matched,
+        "unknown": unknown
     }
