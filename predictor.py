@@ -8,6 +8,7 @@ from sklearn import preprocessing
 
 # Load training data
 training = pd.read_csv("Data/Training.csv")
+training_columns = list(training.columns[:-1])
 testing = pd.read_csv("Data/Testing.csv")
 cols = training.columns[:-1]
 x = training[cols]

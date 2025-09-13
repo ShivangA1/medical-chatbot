@@ -6,6 +6,8 @@ import re
 from flask import Flask, request, Response
 from flask_sqlalchemy import SQLAlchemy
 from predictor import predict_disease
+from predictor import training_columns
+
 
 
 app = Flask(__name__)
@@ -281,7 +283,7 @@ def webhook():
                                 symptoms = [s.strip().lower() for s in raw.split(",")]
 
                                 # Load known symptoms from your model or dataset
-                                known_symptoms = predict_disease.__globals__.get("training_columns", [])
+                                known_symptoms = training_columns
                                 valid_symptoms = [s for s in symptoms if s in known_symptoms]
                                 unknown_symptoms = [s for s in symptoms if s not in known_symptoms]
 
