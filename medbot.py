@@ -40,16 +40,33 @@ DISCLAIMER = (
 )
 
 PREDEFINED_RESPONSES = {
-    "hi": "👋 Hello! I'm your health assistant. How can I support you today?",
+    "hi": "👋 Hello! I'm your health assistant. How can I support you today || type 'help' to know what this bot can do",
     "hello": "Hi there! 😊 Feel free to ask about wellness, safety, or self-care.",
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
-    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. type 'command' to see options.",
-    "command" : "type '/reset' to clear memory or '/summary' to get a recap or '/debug' to see current memory.",
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe . type 'command' to see the available services.",
+    "command": (
+    "📋 Available commands:\n"
+    "- '/reset' → Clear your memory and start fresh\n"
+    "- '/summary' → Get a recap of our conversation\n"
+    "- '/debug' → View current memory logs\n"
+    "- 'check' → Run a health check based on symptoms\n"
+    "- 'resources' → View trusted health websites\n"
+    "- 'languages' → Learn about multilingual support\n"
+    "- 'help' → See what I can do"
+    ),
     "languages": "I can understand and respond in multiple languages. Just type your message in your preferred language!",
     "resources": "For reliable health information, visit:\n- National Health Portal (India): https://www.nhp.gov.in\n- Ministry of Health and Family Welfare: https://mohfw.gov.in\n- World Health Organization: https://www.who.int\n- Indian Council of Medical Research: https://www.icmr.gov.in",
-    "emergency": "If you are experiencing a medical emergency, please call your local emergency services immediately or call on national ambulance number '102'. Your safety is the top priority!"
+    "emergency": (
+    "🚨 If you're experiencing a medical emergency, please contact local emergency services immediately.\n"
+    "In India, dial 102 for ambulance support. Your safety is the top priority!"
+    ),
+    "check": (
+    "🩺 To check symptoms, type:\n"
+    "`check: fever, sore throat, fatigue`\n"
+    "I'll analyze your symptoms and suggest possible conditions, precautions, and severity."
+    ),
 }
 
 def match_predefined(text):
@@ -72,6 +89,8 @@ def match_predefined(text):
         return PREDEFINED_RESPONSES["resources"]
     elif re.search(r"\b(emergency|urgent)\b", text):
         return PREDEFINED_RESPONSES["emergency"]
+    elif re.search(r"\bcheck|check symptom|symptom|check symptoms\b", text):
+        return PREDEFINED_RESPONSES["check"]
     return None
 
 # 🧠 SQLite memory functions
