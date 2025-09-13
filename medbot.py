@@ -64,7 +64,7 @@ PREDEFINED_RESPONSES = {
     ),
     "check": (
     "🩺 To check symptoms, type:\n"
-    "`check: fever, sore throat, fatigue`\n"
+    "'check: symptom1, symptom2, fatigue'\n"
     "I'll analyze your symptoms and suggest possible conditions, precautions, and severity."
     ),
 }
