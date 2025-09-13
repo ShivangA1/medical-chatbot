@@ -3,10 +3,16 @@ import json
 import requests
 import logging
 import re
-from flask import Flask, request, Response
+from datetime import datetime
+
+from flask import Flask, request, Response, render_template
 from flask_sqlalchemy import SQLAlchemy
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
+# 🔌 Initialize SocketIO with eventlet
+socketio = SocketIO(app, async_mode='eventlet')
+
 logging.basicConfig(level=logging.INFO)
 
 # 🔐 Load secrets from environment variables
@@ -154,6 +160,10 @@ def verify_webhook():
     return Response("Verification failed", status=403)
 
 # 🌐 Webhook message handler
+from flask import Response, request
+from flask_socketio import emit
+from datetime import datetime
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
@@ -170,10 +180,20 @@ def webhook():
 
                     for message in messages:
                         message_text = message.get("text", {}).get("body", "")
+                        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
                         if message_text and phone_number:
                             logging.info(f"👤 Name: {contact_name}")
                             logging.info(f"📱 Phone: {phone_number}")
                             logging.info(f"💬 Message: {message_text}")
+
+                            # 🔴 Emit to live dashboard
+                            emit('new_message', {
+                                'user': contact_name,
+                                'phone': phone_number,
+                                'text': message_text,
+                                'time': timestamp
+                            }, broadcast=True)
 
                             # 🧹 Clear memory
                             if message_text.lower().strip() == "reset":
@@ -228,10 +248,14 @@ def webhook():
                             send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
+#dashboard route
+@app.route('/')
+def dashboard():
+    return render_template('dashboard.html')  # We'll create this file next
 
 @app.route('/')
 def home():
     return "✅ Medical Chatbot is running!"
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
