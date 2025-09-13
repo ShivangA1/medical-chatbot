@@ -177,7 +177,7 @@ def send_whatsapp_interactive(to_number, interactive_payload):
         logging.error(f"Interactive send error: {e}")
 
 # 🧠 Symptom pagination helpers
-def get_symptom_page(page=0, page_size=10):
+def get_symptom_page(page=0, page_size=9):  # max 9 + 1 "Next Page"
     start = page * page_size
     end = start + page_size
     page_symptoms = cols[start:end]
@@ -188,10 +188,12 @@ def get_symptom_page(page=0, page_size=10):
         "title": s.replace("_", " ").title()[:24]
     } for s in page_symptoms]
 
+    # Add "Next Page" button if more symptoms remain
     if end < len(cols):
         rows.append({"id": "next_page", "title": "➡ Next Page"})
     
     return rows
+
 
 # 🔹 Start symptom checker reliably
 def start_symptom_checker(phone_number):
