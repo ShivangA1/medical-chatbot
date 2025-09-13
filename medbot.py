@@ -43,7 +43,7 @@ PREDEFINED_RESPONSES = {
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
-    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Send 'reset' to clear memory or 'summary' to get a recap."
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Send '/reset' to clear memory or '/summary' to get a recap or '/debug' to see current memory.",
 }
 
 def match_predefined(text):
@@ -208,13 +208,13 @@ def webhook():
                             logging.info(f"💬 Message: {message_text}")
 
                             # 🧹 Clear memory
-                            if message_text.lower().strip() == "reset":
+                            if message_text.lower().strip() == "/reset":
                                 clear_session(phone_number)
                                 send_whatsapp_message(phone_number, "🧹 Memory cleared. Let's start fresh!")
                                 continue
 
                             # 🧪 Debug memory
-                            elif message_text.lower().strip() == "debug":
+                            elif message_text.lower().strip() == "/debug":
                                 history = load_session(phone_number)
                                 if not history:
                                     reply = "🧪 No memory found for this session."
@@ -225,7 +225,7 @@ def webhook():
                                 continue
 
                             # 🧠 Summarize memory
-                            elif message_text.lower().strip() == "summary":
+                            elif message_text.lower().strip() == "/summary":
                                 reply = generate_summary(phone_number)
                                 send_whatsapp_message(phone_number, reply)
                                 continue
