@@ -266,47 +266,20 @@ def webhook():
                             # 🩺 Symptom checker
                             elif message_text.lower().startswith("check:"):
                                 raw = message_text.split("check:", 1)[1]
-                                symptoms = [s.strip().replace(" ", "_").lower() for s in raw.split(",")]
+                                symptoms = [s.strip() for s in raw.split(",")]
                                 result = predict_disease(symptoms, days=2)
 
-                                matched = result.get("matched", [])
-                                unknown = result.get("unknown", [])
-
-                                # Save to memory
-                                history = load_session(phone_number)
-                                history.append({"role": "user", "content": f"Symptoms: {', '.join(symptoms)}"})
-                                save_session(phone_number, history)
-
-                                # Handle unknown symptoms
-                                if unknown:
-                                    prompt = (
-                                        f"A user entered the following symptoms: {', '.join(symptoms)}.\n"
-                                        f"I couldn't recognize: {', '.join(unknown)}.\n"
-                                        "Please suggest related conditions or follow-up questions to clarify their input."
+                                if "error" in result:
+                                    reply = f"⚠️ {result['error']}"
+                                else:
+                                    reply = (
+                                        f"🩺 You may have: {result['disease']}\n"
+                                        f"📖 Description: {result['description']}\n"
+                                        f"⚠️ Severity: {result['severity']}\n"
+                                        f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
                                     )
-                                    fallback = call_openrouter(prompt, phone_number)
-                                    send_whatsapp_message(phone_number, f"🤖 I didn’t recognize: {', '.join(unknown)}.\nHere's what I found:\n{fallback}")
-                                    continue
-
-                                # Ask follow-ups if input is sparse
-                                if len(matched) < 3:
-                                    prompt = (
-                                        f"The user entered: {', '.join(matched)}.\n"
-                                        "Please ask 2–3 follow-up questions to help refine the diagnosis."
-                                    )
-                                    follow_ups = call_openrouter(prompt, phone_number)
-                                    send_whatsapp_message(phone_number, "🩺 To help me be more accurate, could you answer these:\n" + follow_ups)
-                                    continue
-
-                                # Run prediction
-                                reply = (
-                                    f"🩺 You may have: {result['disease']}\n"
-                                    f"📖 Description: {result['description']}\n"
-                                    f"⚠️ Severity: {result['severity']}\n"
-                                    f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
-                                )
-                                send_whatsapp_message(phone_number, reply)
-                                continue
+                                    send_whatsapp_message(phone_number, reply)
+                                    continue  
 
                             # 🔍 Check for predefined reply
                             reply = match_predefined(message_text)
