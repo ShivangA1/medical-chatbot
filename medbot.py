@@ -226,6 +226,7 @@ def send_whatsapp_message(to_number, message_text):
     }
     try:
         requests.post(url, headers=headers, json=payload)
+        logging.info(f"Sending message to {to_number}: {message_text}")
     except Exception as e:
         logging.error(f"WhatsApp send error: {e}")
 
