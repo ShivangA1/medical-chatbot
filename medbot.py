@@ -43,7 +43,8 @@ PREDEFINED_RESPONSES = {
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
-    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Send '/reset' to clear memory or '/summary' to get a recap or '/debug' to see current memory.",
+    "help": "You can ask me about symptoms, healthy habits, or how to stay safe. type 'command' to see options.",
+    "command" : "type '/reset' to clear memory or '/summary' to get a recap or '/debug' to see current memory.",
 }
 
 def match_predefined(text):
@@ -58,6 +59,8 @@ def match_predefined(text):
         return PREDEFINED_RESPONSES["who are you"]
     elif re.search(r"\b(help|support)\b", text):
         return PREDEFINED_RESPONSES["help"]
+    elif re.search(r"\b(command|commands)\b", text):
+        return PREDEFINED_RESPONSES["command"]
     return None
 
 # 🧠 SQLite memory functions
