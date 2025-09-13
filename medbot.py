@@ -6,10 +6,6 @@ import re
 from flask import Flask, request, Response
 from flask_sqlalchemy import SQLAlchemy
 from predictor import predict_disease
-from predictor import training_columns
-from difflib import get_close_matches
-
-
 
 
 app = Flask(__name__)
@@ -68,12 +64,10 @@ PREDEFINED_RESPONSES = {
     ),
     "check": (
     "🩺 To check symptoms, type:\n"
-    "'check: symptom1, symptom2, symptom3, .....'\n"
+    "'check: symptom1, symptom2, fatigue'\n"
     "I'll analyze your symptoms and suggest possible conditions, precautions, and severity."
     ),
 }
-
-
 
 def match_predefined(text):
     text = text.lower().strip()
@@ -120,21 +114,6 @@ def clear_session(phone_number):
     if session:
         db.session.delete(session)
         db.session.commit()
-
-def generate_followups(symptoms, phone_number):
-    prompt = (
-        f"A user reported these symptoms: {', '.join(symptoms)}.\n"
-        "Generate 3–4 follow-up questions that would help refine a health diagnosis. "
-        "Be empathetic, medically cautious, and avoid clinical advice. "
-        "Use simple language and include emojis for warmth."
-    )
-    return call_openrouter(prompt, phone_number)
-# 🩺 Fuzzy symptom matching
-def match_symptom(user_symptom, known_symptoms):
-    matches = get_close_matches(user_symptom, known_symptoms, n=1, cutoff=0.6)
-    return matches[0] if matches else user_symptom
-
-
 
 # 🧠 OpenRouter API call
 def call_openrouter(user_text, phone_number):
@@ -226,7 +205,6 @@ def send_whatsapp_message(to_number, message_text):
     }
     try:
         requests.post(url, headers=headers, json=payload)
-        logging.info(f"Sending message to {to_number}: {message_text}")
     except Exception as e:
         logging.error(f"WhatsApp send error: {e}")
 
@@ -288,44 +266,9 @@ def webhook():
                             # 🩺 Symptom checker
                             elif message_text.lower().startswith("check:"):
                                 raw = message_text.split("check:", 1)[1]
-                                raw_symptoms = [s.strip().lower() for s in raw.split(",")]
+                                symptoms = [s.strip() for s in raw.split(",")]
+                                result = predict_disease(symptoms, days=2)
 
-                                # Normalize known symptoms
-                                known_symptoms = [s.strip().lower() for s in training_columns]
-
-                                # Fuzzy match user input
-                                symptoms = [match_symptom(s, known_symptoms) for s in raw_symptoms]
-
-                                valid_symptoms = [s for s in symptoms if s in known_symptoms]
-                                unknown_symptoms = [s for s in symptoms if s not in known_symptoms]
-
-                                logging.info(f"Raw user symptoms: {raw_symptoms}")
-                                logging.info(f"Fuzzy-matched symptoms: {symptoms}")
-                                logging.info(f"Valid symptoms: {valid_symptoms}")
-                                logging.info(f"Unknown symptoms: {unknown_symptoms}")
-
-                                # Save to memory
-                                history = load_session(phone_number)
-                                history.append({"role": "user", "content": f"Symptoms: {', '.join(symptoms)}"})
-                                save_session(phone_number, history)
-
-                                # Fallback for unknowns
-                                if unknown_symptoms:
-                                    fallback = call_openrouter(
-                                        f"User mentioned unknown symptoms: {', '.join(unknown_symptoms)}. Suggest related conditions or follow-up questions.",
-                                        phone_number
-                                    )
-                                    send_whatsapp_message(phone_number, f"🤖 I didn’t recognize: {', '.join(unknown_symptoms)}.\nHere's what I found:\n{fallback}")
-                                    continue
-
-                                # Ask follow-ups if input is sparse
-                                if len(valid_symptoms) < 3:
-                                    follow_ups = generate_followups(valid_symptoms, phone_number)
-                                    send_whatsapp_message(phone_number, "🩺 To help me be more accurate, could you answer these:\n" + follow_ups)
-                                    continue
-
-                                # Run prediction
-                                result = predict_disease(valid_symptoms, days=2)
                                 if "error" in result:
                                     reply = f"⚠️ {result['error']}"
                                 else:
@@ -335,9 +278,18 @@ def webhook():
                                         f"⚠️ Severity: {result['severity']}\n"
                                         f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
                                     )
-                                send_whatsapp_message(phone_number, reply)
-                                continue
-                            return Response("EVENT_RECEIVED", status=200)
+                                    send_whatsapp_message(phone_number, reply)
+                                    continue  
+
+                            # 🔍 Check for predefined reply
+                            reply = match_predefined(message_text)
+                            if not reply:
+                                reply = call_openrouter(message_text, phone_number)
+
+                            send_whatsapp_message(phone_number, reply)
+
+    return Response("EVENT_RECEIVED", status=200)
+
 # 🏠 Health check route
 @app.route('/')
 def home():
