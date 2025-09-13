@@ -45,6 +45,9 @@ PREDEFINED_RESPONSES = {
     "who are you": "I'm a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
     "help": "You can ask me about symptoms, healthy habits, or how to stay safe. type 'command' to see options.",
     "command" : "type '/reset' to clear memory or '/summary' to get a recap or '/debug' to see current memory.",
+    "languages": "I can understand and respond in multiple languages. Just type your message in your preferred language!",
+    "resources": "For reliable health information, visit:\n- National Health Portal (India): https://www.nhp.gov.in\n- Ministry of Health and Family Welfare: https://mohfw.gov.in\n- World Health Organization: https://www.who.int\n- Indian Council of Medical Research: https://www.icmr.gov.in",
+    "emergency": "If you are experiencing a medical emergency, please call your local emergency services immediately or call on national ambulance number '102'. Your safety is the top priority!"
 }
 
 def match_predefined(text):
@@ -61,6 +64,12 @@ def match_predefined(text):
         return PREDEFINED_RESPONSES["help"]
     elif re.search(r"\b(command|commands)\b", text):
         return PREDEFINED_RESPONSES["command"]
+    elif re.search(r"\b(languages|language)\b", text):
+        return PREDEFINED_RESPONSES["languages"]
+    elif re.search(r"\b(resources|resource|info|information)\b", text):
+        return PREDEFINED_RESPONSES["resources"]
+    elif re.search(r"\b(emergency|urgent)\b", text):
+        return PREDEFINED_RESPONSES["emergency"]
     return None
 
 # 🧠 SQLite memory functions
