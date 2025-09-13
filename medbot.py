@@ -286,7 +286,10 @@ def webhook():
                                 known_symptoms = training_columns
                                 valid_symptoms = [s for s in symptoms if s in known_symptoms]
                                 unknown_symptoms = [s for s in symptoms if s not in known_symptoms]
-
+                                logging.info(f"User symptoms: {symptoms}")
+                                logging.info(f"Known symptoms: {known_symptoms}")
+                                logging.info(f"Valid symptoms: {valid_symptoms}")
+                                logging.info(f"Unknown symptoms: {unknown_symptoms}")
                                 # Save initial symptoms to memory
                                 history = load_session(phone_number)
                                 history.append({"role": "user", "content": f"Symptoms: {', '.join(symptoms)}"})
