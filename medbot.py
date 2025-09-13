@@ -180,30 +180,45 @@ def handle_symptom_selection(phone_number, selection_id):
     session = load_session(phone_number)
     if not session or session.state != "symptom_check":
         return
+
     selected_symptoms = json.loads(session.selected_symptoms)
+
     if selection_id == "next_page":
         session.current_page += 1
         save_session(session)
         rows = get_symptom_page(page=session.current_page)
         interactive = {
             "type": "list",
-            "body": {"text": "Select your symptom:"},
+            "body": {"text": "🩺 Select your symptom:"},
             "footer": {"text": "You can select one symptom per message."},
             "action": {"button": "Symptoms", "sections": [{"title": "Symptoms", "rows": rows}]}
         }
         send_whatsapp_interactive(phone_number, interactive)
         return
+
+    if selection_id == "finish":
+        # User finished adding symptoms
+        finish_symptom_check(phone_number)
+        return
+
+    # Add selected symptom
     symptom_name = selection_id.replace("symptom_", "").replace("_", " ").lower()
     if symptom_name not in selected_symptoms:
         selected_symptoms.append(symptom_name)
+
     session.selected_symptoms = json.dumps(selected_symptoms)
     save_session(session)
+
     interactive = {
         "type": "button",
         "body": {"text": f"✅ Added: {symptom_name.title()}. Add more or finish?"},
-        "action": {"buttons": [{"type": "reply", "reply": {"id": "add_more", "title": "Add More"}}, {"type": "reply", "reply": {"id": "finish", "title": "Finish"}}]}
+        "action": {"buttons": [
+            {"type": "reply", "reply": {"id": "add_more", "title": "Add More"}},
+            {"type": "reply", "reply": {"id": "finish", "title": "Finish"}}
+        ]}
     }
     send_whatsapp_interactive(phone_number, interactive)
+
 
 # 🧠 Session helper
 def get_or_create_session(phone_number):
@@ -222,37 +237,47 @@ def finish_symptom_check(phone_number):
     result = predict_disease(symptoms, days=2)
 
     if "error" in result:
-        reply = f"⚠️ {result['error']}"
-    else:
-        # Start building reply
-        reply = (
-            f"🩺 Based on the symptoms you provided, you may have: {result['disease']} "
-            f"({result.get('confidence','N/A')}% confidence)\n"
-            f"📖 Description: {result['description']}\n"
-            f"⚠️ Severity: {result['severity']}\n"
-            f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
-        )
+        send_whatsapp_message(phone_number, f"⚠️ {result['error']}")
+        return
 
-        # Warn user if confidence is low or few symptoms
-        if result.get('confidence', 0) < 70:
-            reply += "\n\n⚠️ Note: The confidence in this result is low. Please provide more symptoms for a more accurate assessment."
+    # Build result text
+    reply = (
+        f"🩺 Based on the symptoms you provided, you may have: {result['disease']} "
+        f"({result.get('confidence','N/A')}% confidence)\n"
+        f"📖 Description: {result['description']}\n"
+        f"⚠️ Severity: {result['severity']}\n"
+        f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
+    )
 
-        if len(symptoms) < 3:
-            reply += "\n\n⚠️ Warning: Very few symptoms provided. This may not be enough to make a reliable prediction."
+    # Confidence and warning notes
+    if result.get('confidence', 0) < 70:
+        reply += "\n\n ⚠️ Confidence is low. Consider adding more symptoms."
+    if len(symptoms) < 3:
+        reply += "\n\n ⚠️ Very few symptoms provided. Accuracy may be limited."
 
-        # Suggest follow-up symptoms if available
-        if "followup" in result:
-            reply += "\n\n🤔 To improve accuracy, can you tell me if you also have any of these: " + ", ".join(result["followup"]) + "?"
-
-        reply += f"\n\n{DISCLAIMER}"
-
+    reply += f"\n\n{DISCLAIMER}"
     send_whatsapp_message(phone_number, reply)
 
-    # Reset session
-    session.state = "idle"
-    session.selected_symptoms = json.dumps([])
-    session.current_page = 0
-    save_session(session)
+    # If follow-up symptoms exist, show them interactively
+    if "followup" in result and result["followup"]:
+        rows = [{"id": f"symptom_{s}", "title": s.replace('_', ' ').title()} for s in result["followup"]]
+        interactive_payload = {
+            "type": "list",
+            "body": {"text": "🤔 To improve accuracy, can you tell me if you also have any of these symptoms?"},
+            "footer": {"text": "Select a symptom or click 'Finish' if none apply."},
+            "action": {"button": "Select Symptom", "sections": [{"title": "Follow-Up Symptoms", "rows": rows + [{"id": "finish", "title": "✅ Finish"}]}]}
+        }
+        send_whatsapp_interactive(phone_number, interactive_payload)
+        session.state = "symptom_check"  # stay in selection mode
+        save_session(session)
+    else:
+        # No follow-up → reset session
+        session.state = "idle"
+        session.selected_symptoms = json.dumps([])
+        session.current_page = 0
+        save_session(session)
+
+
 
 
 # 🔹 OpenRouter Fallback
