@@ -94,7 +94,6 @@ def call_openrouter(user_text, phone_number):
         "Avoid diagnosing, prescribing, or making clinical decisions. If symptoms are severe, unusual, or potentially life-threatening, advise users to seek immediate professional care. "
         "Use emojis to enhance clarity and warmth. Politely redirect non-health queries. "
         "For red-flag symptoms (e.g., chest pain, severe bleeding, difficulty breathing), instruct users to contact emergency services without delay.\n\n"
-        "retain previous conversation context to provide coherent and relevant responses.\n\n"
         f"Always end with this disclaimer:\n{DISCLAIMER}\n\n"
         "Trusted health resources:\n"
         "- National Health Portal (India): https://www.nhp.gov.in\n"
@@ -124,6 +123,39 @@ def call_openrouter(user_text, phone_number):
     except Exception as e:
         logging.error(f"❌ OpenRouter failed with: {e}")
         return "⚠️ I'm currently unable to respond. Please try again later.\n\n" + DISCLAIMER
+
+# 🧠 Generate summary from memory
+def generate_summary(phone_number):
+    messages = load_session(phone_number)
+    if not messages:
+        return "🧠 No memory to summarize yet."
+
+    conversation_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+    summary_prompt = (
+        "You are a multilingual health assistant. Summarize the following conversation between a user and assistant. "
+        "Focus on health concerns, advice given, and any follow-up suggestions. Keep it empathetic, clear, and concise. "
+        "Do not include unrelated content or hallucinate. End with a reminder to seek professional care if symptoms persist.\n\n"
+        f"Conversation:\n{conversation_text}"
+    )
+
+    payload = {
+        "model": "deepseek/deepseek-chat-v3.1:free",
+        "temperature": 0.5,
+        "messages": [{"role": "system", "content": summary_prompt}]
+    }
+
+    try:
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions",
+                             headers={
+                                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                                 "Content-Type": "application/json"
+                             },
+                             json=payload, timeout=30)
+        resp.raise_for_status()
+        return "🧠 Summary:\n" + resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logging.error(f"Summary error: {e}")
+        return "⚠️ Couldn't generate summary. Try again later."
 
 # 📤 Send WhatsApp message
 def send_whatsapp_message(to_number, message_text):
@@ -194,29 +226,7 @@ def webhook():
 
                             # 🧠 Summarize memory
                             elif message_text.lower().strip() == "summary":
-                                history = load_session(phone_number)
-                                if not history:
-                                    reply = "🧠 No memory to summarize yet."
-                                else:
-                                    summary_prompt = [{"role": "system", "content": "Summarize the following conversation in 2-3 lines for context retention."}] + history
-                                    payload = {
-                                        "model": "deepseek/deepseek-chat-v3.1:free",
-                                        "temperature": 0.5,
-                                        "messages": summary_prompt
-                                    }
-                                    try:
-                                        resp = requests.post("https://openrouter.ai/api/v1/chat/completions",
-                                                             headers={
-                                                                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                                                                 "Content-Type": "application/json"
-                                                             },
-                                                             json=payload, timeout=30)
-                                        resp.raise_for_status()
-                                        summary = resp.json()["choices"][0]["message"]["content"].strip()
-                                        reply = f"🧠 Summary:\n{summary}"
-                                    except Exception as e:
-                                        logging.error(f"Summary error: {e}")
-                                        reply = "⚠️ Couldn't generate summary. Try again later."
+                                reply = generate_summary(phone_number)
                                 send_whatsapp_message(phone_number, reply)
                                 continue
 
@@ -229,9 +239,11 @@ def webhook():
 
     return Response("EVENT_RECEIVED", status=200)
 
+# 🏠 Health check route
 @app.route('/')
 def home():
     return "✅ Medical Chatbot is running!"
 
+# 🚀 Run the app
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
