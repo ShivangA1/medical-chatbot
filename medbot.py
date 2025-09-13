@@ -5,6 +5,8 @@ import logging
 import re
 from flask import Flask, request, Response
 from flask_sqlalchemy import SQLAlchemy
+from predictor import predict_disease
+
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -241,6 +243,24 @@ def webhook():
                                 reply = generate_summary(phone_number)
                                 send_whatsapp_message(phone_number, reply)
                                 continue
+
+                            # 🩺 Symptom checker
+                            elif message_text.lower().startswith("check:"):
+                                raw = message_text.split("check:", 1)[1]
+                                symptoms = [s.strip() for s in raw.split(",")]
+                                result = predict_disease(symptoms, days=2)
+
+                                if "error" in result:
+                                    reply = f"⚠️ {result['error']}"
+                                else:
+                                    reply = (
+                                        f"🩺 You may have: {result['disease']}\n"
+                                        f"📖 Description: {result['description']}\n"
+                                        f"⚠️ Severity: {result['severity']}\n"
+                                        f"✅ Precautions:\n" + "\n".join([f"{i+1}) {p}" for i, p in enumerate(result['precautions'])])
+                                    )
+                                    send_whatsapp_message(phone_number, reply)
+                                    continue  
 
                             # 🔍 Check for predefined reply
                             reply = match_predefined(message_text)
