@@ -51,7 +51,6 @@ PREDEFINED_RESPONSES = {
     "command": (
         "📋 Available commands:\n"
         "- '/reset' → Clear your memory and start fresh\n"
-        "- '/summary' → Get a recap of our conversation\n"
         "- '/debug' → View current memory logs\n"
         "- 'check' → Run a health check based on symptoms\n"
         "- 'resources' → View trusted health websites\n"
@@ -90,42 +89,6 @@ def clear_session(phone_number):
         db.session.delete(session)
         db.session.commit()
 
-def generate_summary(phone_number):
-    session = load_session(phone_number)
-    if not session or not session.history:
-        return "🧠 No memory to summarize yet."
-
-    messages = json.loads(session.history)
-    conversation_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-
-    summary_prompt = (
-        "You are a multilingual health assistant. Summarize the following conversation between a user and assistant. "
-        "Focus on health concerns, advice given, and any follow-up suggestions. "
-        "Keep it empathetic, clear, and concise. Do not hallucinate. End with a reminder to seek professional care if symptoms persist.\n\n"
-        f"Conversation:\n{conversation_text}"
-    )
-
-    payload = {
-        "model": "deepseek/deepseek-chat-v3.1:free",
-        "temperature": 0.5,
-        "messages": [{"role": "system", "content": summary_prompt}]
-    }
-
-    try:
-        resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=30
-        )
-        resp.raise_for_status()
-        return "🧠 Summary:\n" + resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        logging.error(f"Summary error: {e}")
-        return "⚠️ Couldn't generate summary. Try again later."
 
 def log_interaction(phone_number, user_message=None, bot_message=None, session_state=None):
     log_parts = [f"📞 Phone: {phone_number}"]
@@ -370,10 +333,7 @@ def webhook():
                     reply = "🧪 Current memory:\n" + "\n".join([f"{m['role']}: {m['content']}" for m in history]) if history else "🧪 No memory found."
                     send_whatsapp_message(phone_number, reply)
                     continue
-                elif text == "/summary":
-                    reply = generate_summary(phone_number)
-                    send_whatsapp_message(phone_number, reply)
-                    continue
+                
 
                  # Start symptom check
                 if text == "check":
