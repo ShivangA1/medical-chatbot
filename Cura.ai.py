@@ -273,7 +273,7 @@ def finish_symptom_check(phone_number):
     session = load_session(phone_number)
     if not session:
         return
-    symptoms = json.loads(session.selected_symptoms or "[]")
+    symptoms = json.loads(session.selected_symptoms)
 
     if not symptoms:
         send_whatsapp_message(phone_number, "⚠️ You didn’t select any symptoms. Please try again with at least one.")
@@ -302,9 +302,9 @@ def finish_symptom_check(phone_number):
     reply += f"\n\n{DISCLAIMER}"
     send_whatsapp_message(phone_number, reply)
 
-    # --- FIX: properly close interactive_payload dict and send it ---
+    # ✅ Handle follow-ups separately
     if "followup" in result and result["followup"]:
-        rows = [{"id": f"symptom_{s}", "title": s.replace('_', ' ').title()[:24]} for s in result["followup"]]
+        rows = [{"id": f"symptom_{s}", "title": s.replace('_', ' ').title()} for s in result["followup"]]
         interactive_payload = {
             "type": "list",
             "body": {"text": "🤔 To improve accuracy, can you tell me if you also have any of these symptoms?"},
@@ -315,7 +315,8 @@ def finish_symptom_check(phone_number):
             }
         }
         send_whatsapp_interactive(phone_number, interactive_payload)
-        session.state = "symptom_check"
+
+        session.state = "symptom_followup"  # 🔹 NEW STATE
         save_session(session)
     else:
         session.state, session.selected_symptoms, session.current_page = "idle", json.dumps([]), 0
@@ -464,6 +465,16 @@ def webhook():
                 # Start symptom check
                 if text == "check":
                     start_symptom_checker(phone_number)
+                    continue
+
+                if session.state == "symptom_followup" and interactive_id:
+                    if interactive_id.startswith("symptom_"):
+                        handle_symptom_selection(phone_number, interactive_id)
+                    elif interactive_id == "finish":
+                        # ✅ End follow-up loop
+                        session.state, session.selected_symptoms, session.current_page = "idle", json.dumps([]), 0
+                        save_session(session)
+                        send_whatsapp_message(phone_number, "✅ Thanks! That’s all I needed. Stay healthy!")
                     continue
 
                 # Handle interactive replies
