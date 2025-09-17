@@ -1,7 +1,7 @@
 services:
   - type: web
-    name: medical-chatbot
+    name: Cura.ai-medical-chatbot
     env: python
     buildCommand: ""
-    startCommand: python medbot.py
+    startCommand: python Cura.ai.py
     plan: free
