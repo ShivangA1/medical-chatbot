@@ -148,7 +148,8 @@ def send_whatsapp_interactive(to_number, interactive_payload):
 COMMON_SYMPTOMS = cols[:15]
 
 def get_common_symptoms():
-    rows = [{"id": f"symptom_{s.lower()}", "title": s.replace("_", " ").title()[:24]} for s in COMMON_SYMPTOMS]
+    rows = [{"id": f"symptom_{s.lower()}", "title": s.replace("_", " ").title()[:24]} 
+            for s in COMMON_SYMPTOMS[:9]]
     rows.append({"id": "search_symptom", "title": "🔎 Search Symptoms"})
     return rows
 
@@ -158,22 +159,26 @@ def search_symptom(user_input):
 # --------------------
 # Pagination (with prev_page support)
 # --------------------
-def get_symptom_page(page=0, page_size=9):
+def get_symptom_page(page=0, page_size=7):  
+    """
+    Returns at most 10 rows (7 symptoms + up to 3 controls).
+    """
     start = page * page_size
     end = start + page_size
     page_symptoms = cols[start:end]
-    rows = [{"id": f"symptom_{s.lower()}", "title": s.replace("_", " ").title()[:24]} for s in page_symptoms]
 
-    # Back on pages > 0
+    rows = [{"id": f"symptom_{s.lower()}", "title": s.replace("_", " ").title()[:24]} 
+            for s in page_symptoms]
+
+    # Add navigation controls
     if page > 0:
         rows.append({"id": "prev_page", "title": "⬅ Back Page"})
-
-    # Next if more symptoms remain
     if end < len(cols):
         rows.append({"id": "next_page", "title": "➡ Next Page"})
-    else:
-        rows.append({"id": "finish", "title": "✅ Finish"})
-    return rows
+    rows.append({"id": "finish", "title": "✅ Finish"})
+
+    # ✅ enforce WhatsApp 10-row limit
+    return rows[:10]
 
 # --------------------
 # Symptom-check flow
