@@ -154,7 +154,7 @@ def get_common_symptoms():
     return rows
 
 def search_symptom(user_input):
-    return difflib.get_close_matches(user_input.lower(), [s.lower() for s in cols], n=5, cutoff=0.3)
+    return difflib.get_close_matches(user_input.lower(), [s.lower() for s in cols], n=8, cutoff=0.3)
 
 # --------------------
 # Pagination (with prev_page support)
@@ -436,7 +436,7 @@ def webhook():
                 if session.state == "symptom_search" and text:
                     matches = search_symptom(text)
                     if matches:
-                        rows = [{"id": f"symptom_{m}", "title": m.replace('_',' ').title()[:24]} for m in matches]
+                        rows = [{"id": f"symptom_{m}", "title": m.replace('_',' ').title()[:24]} for m in matches[:9]]
                         rows.append({"id": "finish", "title": "✅ Finish"})
                         interactive_payload = {
                             "type": "list",
@@ -445,7 +445,7 @@ def webhook():
                             "action": {"button": "Choose", "sections": [{"title": "Matches", "rows": rows}]}
                         }
                         send_whatsapp_interactive(phone_number, interactive_payload)
-                        # after showing results switch back to symptom_check so clicks work as normal
+                        # keep them in search mode until they click
                         session.state = "symptom_check"
                         save_session(session)
                     else:
