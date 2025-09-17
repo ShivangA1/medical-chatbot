@@ -190,6 +190,23 @@ def get_or_create_session(phone_number):
         save_session(session)
     return session
 
+def send_symptom_list(phone_number, page=0):
+    """Send a paginated symptom list (max 10 rows)."""
+    rows = get_symptom_page(page=page)
+    interactive_payload = {
+        "type": "list",
+        "body": {"text": f"🩺 Page {page + 1}: Select your symptom"},
+        "footer": {"text": "You can pick one symptom per step."},
+        "action": {
+            "button": "Symptoms",
+            "sections": [
+                {"title": "Symptoms", "rows": rows}
+            ]
+        }
+    }
+    send_whatsapp_interactive(phone_number, interactive_payload)
+
+
 def start_symptom_checker(phone_number):
     session = get_or_create_session(phone_number)
     session.state = "symptom_check"
@@ -206,6 +223,7 @@ def start_symptom_checker(phone_number):
     }
     logging.info(f"Sending symptom list to {phone_number}")
     send_whatsapp_interactive(phone_number, interactive)
+    send_symptom_list(phone_number, page=0)
 
 def handle_symptom_selection(phone_number, selection_id, user_text=None):
     session = load_session(phone_number)
@@ -410,49 +428,34 @@ def webhook():
             value = change.get("value", {})
             if "messages" not in value:
                 continue
+
             messages, contacts = value["messages"], value.get("contacts", [])
             phone_number = contacts[0]["wa_id"] if contacts else None
             if not phone_number:
                 continue
 
-            # create/load session
+            # load session
             session = get_or_create_session(phone_number)
 
             for message in messages:
-                text = message.get("text", {}).get("body", "").strip().lower()
-                logging.info(f"Incoming message from {phone_number}: {text}")
+                msg_type = message.get("type")
+                text = ""
                 interactive_id = None
-                if "interactive" in message:
+
+                # --- Extract message content ---
+                if msg_type == "text":
+                    text = message["text"]["body"].strip().lower()
+                elif msg_type == "interactive":
                     interactive = message["interactive"]
                     if interactive["type"] == "button_reply":
                         interactive_id = interactive["button_reply"]["id"]
                     elif interactive["type"] == "list_reply":
                         interactive_id = interactive["list_reply"]["id"]
 
-                # Log user message to backend logs
-                log_interaction(phone_number, user_message=text, session_state=session.state)
+                logging.info(f"Incoming message from {phone_number}: {text or interactive_id}")
+                log_interaction(phone_number, user_message=text or interactive_id, session_state=session.state)
 
-                # --- Symptom search handling (user typed a search while in symptom_search state) ---
-                if session.state == "symptom_search" and text:
-                    matches = search_symptom(text)
-                    if matches:
-                        rows = [{"id": f"symptom_{m}", "title": m.replace('_',' ').title()[:24]} for m in matches[:9]]
-                        rows.append({"id": "finish", "title": "✅ Finish"})
-                        interactive_payload = {
-                            "type": "list",
-                            "body": {"text": f"🔎 Results for '{text}':"},
-                            "footer": {"text": "Select one or finish."},
-                            "action": {"button": "Choose", "sections": [{"title": "Matches", "rows": rows}]}
-                        }
-                        send_whatsapp_interactive(phone_number, interactive_payload)
-                        # keep them in search mode until they click
-                        session.state = "symptom_check"
-                        save_session(session)
-                    else:
-                        send_whatsapp_message(phone_number, f"⚠️ No symptoms found for '{text}'. Try again.")
-                    continue
-
-                # Commands
+                # --- Commands ---
                 if text == "/reset":
                     clear_session(phone_number)
                     send_whatsapp_message(phone_number, "🧹 Memory cleared. Let's start fresh!")
@@ -467,28 +470,38 @@ def webhook():
                     send_whatsapp_message(phone_number, summary_text)
                     continue
 
-                # Start symptom check
+                # --- Start symptom check ---
                 if text == "check":
                     start_symptom_checker(phone_number)
                     continue
 
-                if session.state == "symptom_followup" and interactive_id:
-                    if interactive_id.startswith("symptom_"):
-                        handle_symptom_selection(phone_number, interactive_id)
-                    elif interactive_id == "finish":
-                        # ✅ End follow-up loop
-                        session.state, session.selected_symptoms, session.current_page = "idle", json.dumps([]), 0
-                        save_session(session)
-                        send_whatsapp_message(phone_number, "✅ Thanks! That’s all I needed. Stay healthy!")
-                    continue
-
-                # Handle interactive replies
+                # --- Handle interactive replies ---
                 if interactive_id:
-                    # include prev_page handling here (so it routes to handler)
-                    if interactive_id.startswith("symptom_") or interactive_id in {"next_page", "prev_page"}:
+                    if interactive_id == "search_symptom":
+                        # ✅ enter search mode
+                        send_whatsapp_message(phone_number, "🔎 Please type the symptom you want to search for.")
+                        session.state = "symptom_search"
+                        save_session(session)
+                        continue
+
+                    elif interactive_id.startswith("symptom_"):
                         handle_symptom_selection(phone_number, interactive_id)
+                        save_session(session)
+                        continue
+
+                    elif interactive_id == "next_page":
+                        session.current_page += 1
+                        send_symptom_list(phone_number, session.current_page)
+                        save_session(session)
+                        continue
+
+                    elif interactive_id == "prev_page":
+                        session.current_page = max(0, session.current_page - 1)
+                        send_symptom_list(phone_number, session.current_page)
+                        save_session(session)
+                        continue
+
                     elif interactive_id == "add_more":
-                        # show current page symptoms again
                         rows = get_symptom_page(page=session.current_page)
                         interactive_payload = {
                             "type": "list",
@@ -497,21 +510,43 @@ def webhook():
                             "action": {"button": "Symptoms", "sections": [{"title": "Symptoms", "rows": rows}]}
                         }
                         send_whatsapp_interactive(phone_number, interactive_payload)
+                        continue
+
                     elif interactive_id == "finish":
                         finish_symptom_check(phone_number)
+                        continue
+
+                # --- Symptom search (user typed a search term) ---
+                if session.state == "symptom_search" and text:
+                    matches = search_symptom(text)
+                    if matches:
+                        rows = [{"id": f"symptom_{m}", "title": m.replace('_',' ').title()[:24]} for m in matches[:9]]
+                        rows.append({"id": "finish", "title": "✅ Finish"})
+                        interactive_payload = {
+                            "type": "list",
+                            "body": {"text": f"🔎 Results for '{text}':"},
+                            "footer": {"text": "Select one or finish."},
+                            "action": {"button": "Choose", "sections": [{"title": "Matches", "rows": rows}]}
+                        }
+                        send_whatsapp_interactive(phone_number, interactive_payload)
+                        session.state = "symptom_check"
+                        save_session(session)
+                    else:
+                        send_whatsapp_message(phone_number, f"⚠️ No symptoms found for '{text}'. Try again.")
                     continue
 
-                # Predefined responses
+                # --- Predefined replies ---
                 reply = match_predefined(text)
                 if reply:
                     send_whatsapp_message(phone_number, reply)
                     continue
 
-                # OpenRouter fallback
+                # --- Fallback to OpenRouter ---
                 reply = call_openrouter(text, phone_number)
                 send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
+
 
 @app.route('/')
 def home():
