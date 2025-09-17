@@ -5,7 +5,8 @@ import logging
 import re
 from flask import Flask, request, Response
 from flask_sqlalchemy import SQLAlchemy
-from predictor import predict_disease, cols  # upgraded predictor with follow-ups
+from predictor import predict_disease, cols 
+import difflib
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -139,6 +140,27 @@ def send_whatsapp_interactive(to_number, interactive_payload):
     except Exception as e:
         logging.error(f"Interactive send error: {e}")
 
+
+
+# top common symptoms (you can customize this list)
+COMMON_SYMPTOMS = cols[:15]  
+
+def get_common_symptoms():
+    rows = [{
+        "id": f"symptom_{s.lower()}",
+        "title": s.replace("_", " ").title()[:24]
+    } for s in COMMON_SYMPTOMS]
+
+    # Add "Search Symptoms" option
+    rows.append({"id": "search_symptom", "title": "🔎 Search Symptoms"})
+    return rows
+
+def search_symptom(user_input):
+    matches = difflib.get_close_matches(user_input.lower(), [s.lower() for s in cols], n=5, cutoff=0.3)
+    return matches
+
+
+
 # 🧠 Symptom pagination helpers
 def get_symptom_page(page=0, page_size=9):  # max 9 + 1 "Next Page"
     start = page * page_size
@@ -163,47 +185,35 @@ def start_symptom_checker(phone_number):
     session = get_or_create_session(phone_number)
     session.state = "symptom_check"
     session.selected_symptoms = json.dumps([])
-    session.current_page = 0
     save_session(session)
 
-    rows = get_symptom_page(page=0)
+    rows = get_common_symptoms()
     interactive = {
         "type": "list",
-        "body": {"text": "🩺 Select your symptom:"},
-        "footer": {"text": "You can select one symptom per message."},
+        "body": {"text": "🩺 Select a common symptom or search:"},
+        "footer": {"text": "Choose one option."},
         "action": {"button": "Symptoms", "sections": [{"title": "Symptoms", "rows": rows}]}
     }
     logging.info(f"Sending symptom list to {phone_number}")
     send_whatsapp_interactive(phone_number, interactive)
 
-def handle_symptom_selection(phone_number, selection_id):
+def handle_symptom_selection(phone_number, selection_id, user_text=None):
     session = load_session(phone_number)
     if not session:
         return
 
     selected_symptoms = json.loads(session.selected_symptoms)
 
-    # User clicked "Finish" → exit loop
+    # User clicked "Finish"
     if selection_id == "finish":
-        session.state = "idle"
-        session.selected_symptoms = json.dumps([])
-        session.current_page = 0
-        save_session(session)
-        send_whatsapp_message(phone_number, "✅ Symptom check finished. Stay safe!")
+        finish_symptom_check(phone_number)
         return
 
-    # User clicked "Next Page" → paginate symptoms
-    if selection_id == "next_page":
-        session.current_page += 1
+    # User clicked "Search Symptoms"
+    if selection_id == "search_symptom":
+        session.state = "symptom_search"
         save_session(session)
-        rows = get_symptom_page(page=session.current_page)
-        interactive = {
-            "type": "list",
-            "body": {"text": "🩺 Select your symptom:"},
-            "footer": {"text": "You can select one symptom per message."},
-            "action": {"button": "Symptoms", "sections": [{"title": "Symptoms", "rows": rows}]}
-        }
-        send_whatsapp_interactive(phone_number, interactive)
+        send_whatsapp_message(phone_number, "🔎 Please type the name of your symptom (e.g., 'rash', 'headache').")
         return
 
     # Add selected symptom
@@ -214,7 +224,6 @@ def handle_symptom_selection(phone_number, selection_id):
     session.selected_symptoms = json.dumps(selected_symptoms)
     save_session(session)
 
-    # Send "Add more or Finish" buttons
     interactive = {
         "type": "button",
         "body": {"text": f"✅ Added: {symptom_name.title()}. Add more or finish?"},
@@ -224,6 +233,7 @@ def handle_symptom_selection(phone_number, selection_id):
         ]}
     }
     send_whatsapp_interactive(phone_number, interactive)
+
 
 
 
@@ -377,6 +387,25 @@ def webhook():
                         interactive_id = interactive["list_reply"]["id"]
                 # Log user message
                 log_interaction(phone_number, user_message=text, session_state=session.state)
+
+                    # 🔍 Handle symptom search state
+                if session.state == "symptom_search" and text:
+                    matches = search_symptom(text)
+                    if matches:
+                        rows = [{"id": f"symptom_{m}", "title": m.replace('_',' ').title()[:24]} for m in matches]
+                        rows.append({"id": "finish", "title": "✅ Finish"})
+
+                        interactive_payload = {
+                            "type": "list",
+                            "body": {"text": f"🔎 Results for '{text}':"},
+                            "footer": {"text": "Select one or finish."},
+                            "action": {"button": "Choose", "sections": [{"title": "Matches", "rows": rows}]}
+                        }
+                        send_whatsapp_interactive(phone_number, interactive_payload)
+                    else:
+                        send_whatsapp_message(phone_number, f"⚠️ No symptoms found for '{text}'. Try again.")
+                    continue
+
 
                 # Commands
                 if text == "/reset":
