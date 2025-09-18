@@ -265,6 +265,7 @@ def finish_symptom_check(phone_number):
         return
 
     if "followup" in result and result["followup"]:
+        # Save followups as a queue so we don’t repeat
         session.state = "followup_check"
         session.followup_symptoms = json.dumps(result["followup"])
         save_session(session)
@@ -273,16 +274,24 @@ def finish_symptom_check(phone_number):
         send_diagnosis(phone_number, result)
         session.state = "idle"
         session.selected_symptoms = json.dumps([])
+        session.followup_symptoms = json.dumps([])  # reset followups
         save_session(session)
 
 def ask_next_followup(phone_number):
     session = load_session(phone_number)
     followups = json.loads(session.followup_symptoms)
     if not followups:
-        finish_symptom_check(phone_number)
+        # No more followups → finalize
+        symptoms = json.loads(session.selected_symptoms)
+        result = predict_disease(symptoms, days=3)
+        send_diagnosis(phone_number, result)
+        session.state = "idle"
+        session.selected_symptoms = json.dumps([])
+        session.followup_symptoms = json.dumps([])
+        save_session(session)
         return
 
-    next_symptom = followups.pop(0)
+    next_symptom = followups.pop(0)  # ✅ remove so we don’t loop
     session.followup_symptoms = json.dumps(followups)
     save_session(session)
 
@@ -301,13 +310,17 @@ def handle_followup_response(phone_number, selection_id):
     session = load_session(phone_number)
     if not session:
         return
+
+    symptoms = json.loads(session.selected_symptoms)
+
     if selection_id.startswith("followup_yes_"):
         symptom = selection_id.replace("followup_yes_", "")
-        symptoms = json.loads(session.selected_symptoms)
         if symptom not in symptoms:
             symptoms.append(symptom)
             session.selected_symptoms = json.dumps(symptoms)
-            save_session(session)
+
+    # No need to handle “no” → just skip
+    save_session(session)
     ask_next_followup(phone_number)
 
 def send_diagnosis(phone_number, result):
@@ -408,7 +421,9 @@ def webhook():
                     continue
                 elif text == "/debug":
                     history = json.loads(session.history) if session.history else []
-                    reply = "🧪 Current memory:\n" + "\n".join([f"{m['role']}: {m['content']}" for m in history]) if history else "🧪 No memory found."
+                    reply = "🧪 Current memory:\n" + "\n".join(
+                        [f"{m['role']}: {m['content']}" for m in history]
+                    ) if history else "🧪 No memory found."
                     send_whatsapp_message(phone_number, reply)
                     continue
 
@@ -425,15 +440,11 @@ def webhook():
                         elif interactive_id == "add_more":
                             send_whatsapp_message(phone_number, "🩺 Please type another symptom:")
                         continue
-
                     elif text and text != "check":  # user typed a symptom
                         handle_symptom_search(phone_number, text)
                         continue
-                if interactive_id and interactive_id.startswith("symptom_"):
-                    handle_symptom_selection(phone_number, interactive_id)
-                    continue
 
-                # Handle follow-up flow
+                # Handle follow-up flow ✅ patched
                 if session.state == "followup_check" and interactive_id:
                     if interactive_id.startswith("followup_yes_") or interactive_id.startswith("followup_no_"):
                         handle_followup_response(phone_number, interactive_id)
@@ -450,6 +461,7 @@ def webhook():
                 send_whatsapp_message(phone_number, reply)
 
     return Response("EVENT_RECEIVED", status=200)
+
 
 @app.route('/')
 def home():
