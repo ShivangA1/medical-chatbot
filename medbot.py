@@ -42,11 +42,11 @@ DISCLAIMER = (
 )
 
 PREDEFINED_RESPONSES = {
-    "hi": "👋 Hello! I'm Cura.ai, your personal health assistant. How can I support you today? Type 'help' to know my features.",
-    "hello": "Hi there! 😊 I'm Cura.ai. Feel free to ask about wellness, safety, or self-care.",
+    "hi": "👋 Hello! I'm Simpli.ai, your personal health assistant. How can I support you today? Type 'help' to know my features.",
+    "hello": "Hi there! 😊 I'm Simpli.ai. Feel free to ask about wellness, safety, or self-care.",
     "thanks": "You're welcome! 🙏 Stay safe and take care.",
     "bye": "Goodbye! 👋 Wishing you good health and happiness.",
-    "who are you": "I'm Cura.ai — a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
+    "who are you": "I'm Simpli.ai — a cautious, multilingual health assistant here to guide you with wellness tips and safety advice.",
     "help": "You can ask me about symptoms, healthy habits, or how to stay safe. Type 'command' to see available services.",
     "command": (
         "📋 Available commands:\n"
@@ -299,10 +299,10 @@ def call_openrouter(user_text, phone_number):
     messages.append({"role": "user", "content": user_text})
 
     system_prompt = (
-    "You are Cura.ai — a cautious, empathetic health assistant designed to support general wellness. "
+    "You are Simpli.ai — a cautious, empathetic health assistant designed to support general wellness. "
     "Be multilingual, empathetic, clear, and culturally sensitive. "
     "Avoid diagnosing or prescribing. Advise emergency care for red-flag symptoms. "
-    f"Always identify yourself as Cura.ai. "
+    f"Always identify yourself as Simpli.ai. "
     f"End with this disclaimer:\n{DISCLAIMER}"
     )
 
@@ -427,7 +427,7 @@ def webhook():
 
 @app.route('/')
 def home():
-    return "✅ Cura.ai Medical Chatbot is running!"
+    return "✅ Simpli.ai Medical Chatbot is running!"
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
