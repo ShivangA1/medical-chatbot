@@ -455,10 +455,12 @@ def webhook():
                 if reply:
                     send_whatsapp_message(phone_number, reply)
                     continue
-
-                # Fallback to LLM
-                reply = call_openrouter(text, phone_number)
-                send_whatsapp_message(phone_number, reply)
+                else:
+                    # Only call LLM if no predefined response matched
+                    if text:
+                        reply = call_openrouter(text, phone_number)
+                        send_whatsapp_message(phone_number, reply)
+                        continue
 
     return Response("EVENT_RECEIVED", status=200)
 
